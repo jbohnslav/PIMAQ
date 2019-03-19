@@ -10,7 +10,7 @@ import argparse
 datadir = r'D:\DATA\JB\realsense\experiment08'
 name = 'front_right_JB043'
 preview = True
-save = True
+save = False
 
 def append_to_hdf5(f, name, value, axis=0):
     f[name].resize(f[name].shape[axis]+1, axis=axis)
