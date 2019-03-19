@@ -9,8 +9,10 @@ import argparse
 import multiprocessing as mp
 import yaml
 import warnings
+from queue import LifoQueue
+from threading import Thread
 
-datadir = r'D:\DATA\JB\realsense\experiment08'
+datadir = r'D:\DATA\JB\realsense'
 name = 'front_right_JB043'
 preview = True
 save = False
@@ -69,17 +71,46 @@ class Device:
         self.update_settings(sync_mode)
         if self.save:
             self.initialize_saving()
+            print('saving initialized: %s' %self.name)
         if self.preview:
             self.initialize_preview()
 
     def initialize_preview(self):
         cv2.namedWindow(self.name, cv2.WINDOW_AUTOSIZE)
+        self.font = cv2.FONT_HERSHEY_SIMPLEX
+        self.latest_frame = None
+        self.preview_queue = LifoQueue(maxsize=5)
+        self.preview_thread = Thread(target=self.preview_worker, args=(self.preview_queue,))
+        self.preview_thread.daemon = True
+        self.preview_thread.start()
+
+    def preview_worker(self, queue):
+        while True:
+            item = queue.get()
+            # print(item)
+            if item is None:
+                # print('Stop signal received')
+                break
+            left, right, count = item
+            out = np.vstack((left,right))
+            out = cv2.cvtColor(out, cv2.COLOR_GRAY2RGB)
+                    
+            # string = '%.4f' %(time_acq*1000)
+            string = '%s:%07d' %(self.name, count)
+            cv2.putText(out,string,(10,500), self.font, 0.5,(0,0,255),2,cv2.LINE_AA)
+            self.latest_frame = out
+
+            queue.task_done()
 
     def initialize_saving(self):
         if self.save_format == 'hdf5':
-            fname = '%s_%s.h5' %(self.experiment, self.name)
+            # fname = '%s_%s.h5' %(self.experiment, self.name)
+            fname = self.name + '.h5'
+            subdir = os.path.join(self.savedir, self.experiment)
+            if not os.path.isdir(subdir):
+                os.makedirs(subdir)
             # fname = self.experiment + '.h5'
-            f = h5py.File(os.path.join(self.savedir, fname), 'w')
+            f = h5py.File(os.path.join(subdir, fname), 'w')
             datatype = h5py.special_dtype(vlen=np.dtype('uint8'))
             dset = f.create_dataset('left', (0,), maxshape=(None,),dtype=datatype)
             dset = f.create_dataset('right', (0,), maxshape=(None,),dtype=datatype)
@@ -91,6 +122,7 @@ class Device:
             self.fileobj = f
         else:
             raise NotImplementedError
+        print(subdir)
 
     def update_settings(self, sync_mode='master'):
         # sensor = self.prof.get_device().first_depth_sensor()
@@ -119,6 +151,7 @@ class Device:
                         arrival_time,sestime,cputime):
         if not hasattr(self, 'fileobj'):
             raise ValueError('Writing for camera %s not initialized.' %self.camname)
+        # ret1, ret2 = True, True
         ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,80))
         ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,80))
         if ret1 and ret2:
@@ -133,10 +166,10 @@ class Device:
     def stop_streaming(self):
         self.pipeline.stop()
         self.config.disable_all_streams()
+        # if self.preview:
 
     def __del__(self):
         if hasattr(self, 'pipeline'):
-
             self.stop_streaming()
         if self.save:
             self.fileobj.close()
@@ -160,18 +193,16 @@ def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
     if not master:
         # this makes sure that the master camera is the first one to start
         time.sleep(3)
-
     run_loop(device)
 
 def run_loop(device):
     # start_t = time.perf_counter()
-    framecount = 0
-    if device.preview:
-        font = cv2.FONT_HERSHEY_SIMPLEX
+    # framecount = 0
     try:
         while True:
             # print('acquiring')
             frames = device.pipeline.wait_for_frames(1000*10)
+            start_t = time.perf_counter()
             # frames = device.pipeline.poll_for_frames()
             left = frames.get_infrared_frame(1)
             right = frames.get_infrared_frame(2)
@@ -188,22 +219,34 @@ def run_loop(device):
                 device.write_frames(left, right, framecount, timestamp,
                     arrival_time, sestime, cputime)
 
-            if device.preview:
-                out = np.vstack((left,right))
-                out = cv2.cvtColor(out, cv2.COLOR_GRAY2RGB)
+            # print(time.perf_counter()-start_t)
+            if device.preview and (time.perf_counter()-start_t)*1000<8 and framecount%5==0:
+                # print(time.perf_counter()-start_t)
+                device.preview_queue.put((left,right,framecount))
+                if device.latest_frame is not None:
+                    cv2.imshow(device.name, device.latest_frame)
+                    key = cv2.waitKey(1)
+                    if key==27:
+                        break
+                # out = np.vstack((left,right))
+                # out = cv2.cvtColor(out, cv2.COLOR_GRAY2RGB)
                         
-                # string = '%.4f' %(time_acq*1000)
-                string = '%s:%07d' %(device.name, framecount)
-                cv2.putText(out,string,(10,500), font, 0.5,(0,0,255),2,cv2.LINE_AA)
-                cv2.imshow(device.name, out)
-                key = cv2.waitKey(1)
-                if key==27:
-                    break
-            framecount+=1
+                # # string = '%.4f' %(time_acq*1000)
+                # string = '%s:%07d' %(device.name, framecount)
+                # cv2.putText(out,string,(10,500), font, 0.5,(0,0,255),2,cv2.LINE_AA)
+                # cv2.imshow(device.name, out)
+                # key = cv2.waitKey(1)
+                # if key==27:
+                #     break
+            # framecount+=1
     except KeyboardInterrupt:
         pass
         # print('User stopped acquisition.')
     finally:
+        # don't know why I can't put this in the destructor
+        if device.preview:
+            device.preview_queue.put(None)
+            device.preview_thread.join()
         del(device)
 
 def main():
@@ -214,20 +257,21 @@ def main():
         help='Show preview in opencv window')
     parser.add_argument('-s', '--save', default=False, action='store_true',
         help='Delete local dirs or not. 0=don''t delete')
-    parser.add_argument('--verbose', default=False,action='store_true',
+    parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
     parser.add_argument('--master', default=master,type=str,
         help='Which camera serial number is the "master" camera.')
 
     args = parser.parse_args()
 
-    
     # Configure depth and color streams
     # pipeline = rs.pipeline()
     
     # config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
     # config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     serials = enumerate_connected_devices(rs.context())
+    if args.verbose:
+        print('Serials: ', serials)
     assert(args.master in serials)
     if os.path.isfile('serials.yaml'):
         with open('serials.yaml') as f:
@@ -252,13 +296,15 @@ def main():
     for serial in serials:
         tup = (serial, args, datadir, experiment, serial_dict,start_t)
         tuples.append(tup)
+    if args.verbose:
+        print('Tuples created, starting...')
+
     with mp.Pool(len(serials)) as p:
         try:
             p.starmap(initialize_and_loop, tuples)  
         except KeyboardInterrupt:
             print('User interrupted acquisition')
 
-    
     if args.preview:
         cv2.destroyAllWindows()
 
