@@ -42,7 +42,7 @@ def enumerate_connected_devices(context):
 
 class Device:
     def __init__(self, serial,config, start_t, save=False,savedir=None,experiment=None, name=None,
-        save_format='hdf5',preview=False):
+        save_format='hdf5',preview=False,verbose=False,options=None):
         # print('Initializing %s' %name)
         self.config = config
         self.serial = serial
@@ -53,6 +53,8 @@ class Device:
         self.name = name
         self.save_format=save_format
         self.preview=preview
+        self.verbose = verbose
+        self.options = options
         # print('Done.')
 
     def start(self, sync_mode='slave'):
@@ -61,10 +63,13 @@ class Device:
         try:
             pipeline_profile = pipeline.start(self.config)
         except RuntimeError:
-            print('Pipeline for camera %s already running, restarting...' %serial)
+            print('Pipeline for camera %s already running, restarting...' %self.serial)
             pipeline.stop()
             time.sleep(1)
             pipeline_profile = pipeline.start(self.config)
+        CAPACITY = 10
+        # print(dir(pipeline))
+        # self.framequeue = rs.framequeue(CAPACITY)
         self.pipeline = pipeline
         self.prof = pipeline_profile
         time.sleep(1)
@@ -93,11 +98,16 @@ class Device:
                 break
             left, right, count = item
             out = np.vstack((left,right))
+            h, w = out.shape
+            if self.save:
+                out = cv2.resize(out, (w//2,h//2),cv2.INTER_NEAREST)
+            else:
+                out = cv2.resize(out, (w//3*2,h//3*2),cv2.INTER_NEAREST)
             out = cv2.cvtColor(out, cv2.COLOR_GRAY2RGB)
                     
             # string = '%.4f' %(time_acq*1000)
             string = '%s:%07d' %(self.name, count)
-            cv2.putText(out,string,(10,500), self.font, 0.5,(0,0,255),2,cv2.LINE_AA)
+            cv2.putText(out,string,(10,h-20), self.font, 0.5,(0,0,255),2,cv2.LINE_AA)
             self.latest_frame = out
 
             queue.task_done()
@@ -132,19 +142,40 @@ class Device:
             mode = 1
         elif sync_mode == 'slave':
             mode = 2
+        if self.verbose:
+            print('%s: %s,%d' %(self.name, sync_mode, mode))
         
         this_device = self.prof.get_device()
         ir_sensors = this_device.query_sensors()[0] # 1 for RGB
-        ir_sensors.set_option(rs.option.emitter_enabled,1)
-        ir_sensors.set_option(rs.option.enable_auto_exposure,0)
-        ir_sensors.set_option(rs.option.exposure,500)
-        ir_sensors.set_option(rs.option.gain,16)
+        if self.options=='default' or self.options=='large':
+            ir_sensors.set_option(rs.option.emitter_enabled,1)
+            ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+            laser_pwr = ir_sensors.get_option(rs.option.laser_power)
+            if self.verbose:
+                print("laser power = ", laser_pwr)
+            laser_range = ir_sensors.get_option_range(rs.option.laser_power)
+            if self.verbose:
+                print("laser power range = " , laser_range.min , "~", laser_range.max)
+            ir_sensors.set_option(rs.option.laser_power,200)
+            ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.gain,16)
+        elif self.options =='calib':
+            ir_sensors.set_option(rs.option.emitter_enabled,0)
+            ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+            ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.gain,16)
+        if self.options=='brighter':
+            gain_range = ir_sensors.get_option_range(rs.option.gain)
+            if self.verbose:
+                print("gain range = " , gain_range.min , "~", gain_range.max)
+            ir_sensors.set_option(rs.option.exposure, 500)
+            ir_sensors.set_option(rs.option.gain,16)
         # set this to 2 for slave mode, 1 for master!
         ir_sensors.set_option(rs.option.inter_cam_sync_mode, mode)
         # print(ir_sensors.supports(rs.option.inter_cam_sync_mode))
         # this_device.set_option(rs.option.inter_cam_sync_mode,2)
         # from github
-        # ir_sensors.set_option(rs.option.frames_queue_size,1)
+        # ir_sensors.set_option(rs.option.frames_queue_size,7)
         # print(ir_sensors.get_option(rs.option.inter_cam_sync_mode))
 
     def write_frames(self,left,right, framecount, timestamp,
@@ -178,14 +209,26 @@ class Device:
         print('Destructor called, cam %s deleted.' %self.name) 
 
 def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
+
     config = rs.config()
-    resolution_width = 480
-    resolution_height = 270
-    framerate = 90
+    if args.options=='default' or args.options=='brighter':
+        resolution_width = 480
+        resolution_height = 270
+        framerate = 90
+    elif args.options=='large':
+        resolution_width = 640
+        resolution_height = 480
+        framerate=60
+    elif args.options=='calib':
+        resolution_width=480
+        resolution_height=270
+        framerate=6
+    else:
+        raise NotImplementedError
     config.enable_stream(rs.stream.infrared, 1, resolution_width, resolution_height, rs.format.y8, framerate)
     config.enable_stream(rs.stream.infrared, 2, resolution_width, resolution_height, rs.format.y8, framerate)
     device = Device(serial, config, start_t,save=args.save,savedir=datadir, experiment=experiment,
-            name=serial_dict[serial],preview=args.preview)
+            name=serial_dict[serial],preview=args.preview,verbose=args.verbose, options=args.options)
     assert(type(args.master)==str)
     master = True if serial == args.master else False
     sync_mode = 'master' if master else 'slave'
@@ -198,10 +241,20 @@ def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
 def run_loop(device):
     # start_t = time.perf_counter()
     # framecount = 0
+   #  CAPACITY = 100
+    # framequeue = rs.frame_queue(CAPACITY)
+    # print(dir(framequeue))
     try:
         while True:
             # print('acquiring')
             frames = device.pipeline.wait_for_frames(1000*10)
+            # frames =  rs.composite_frame(rs.frame())
+            # frames = framequeue.wait_for_frame(1000*10)
+            # frame = framequeue.poll_for_frame()
+            # frames = framequeue.poll_for_frame()
+            # print(frames)
+            # if frames:
+                # print(dir(frames))
             start_t = time.perf_counter()
             # frames = device.pipeline.poll_for_frames()
             left = frames.get_infrared_frame(1)
@@ -218,9 +271,13 @@ def run_loop(device):
             if device.save:
                 device.write_frames(left, right, framecount, timestamp,
                     arrival_time, sestime, cputime)
+                # if saving, be more stringent about previewing
+                condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
+            else:
+                condition = True
 
             # print(time.perf_counter()-start_t)
-            if device.preview and (time.perf_counter()-start_t)*1000<8 and framecount%5==0:
+            if device.preview and condition:
                 # print(time.perf_counter()-start_t)
                 device.preview_queue.put((left,right,framecount))
                 if device.latest_frame is not None:
@@ -260,6 +317,9 @@ def main():
     parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
     parser.add_argument('--master', default=master,type=str,
+        help='Which camera serial number is the "master" camera.')
+    parser.add_argument('-o','--options', default='default',
+        choices=['default','large', 'calib', 'brighter'], type=str,
         help='Which camera serial number is the "master" camera.')
 
     args = parser.parse_args()

@@ -19,8 +19,8 @@ def main():
     prof = pipe.start(config)
     dev = prof.get_device()
     ds = dev.query_sensors()[0]
-    ds.set_option(rs.option.inter_cam_sync_mode, 1)
-    # ds.set_option(rs.option.frames_queue_size,1)
+    ds.set_option(rs.option.inter_cam_sync_mode, 0)
+    ds.set_option(rs.option.frames_queue_size,4)
     print(ds.get_option(rs.option.inter_cam_sync_mode))
 
     framecount = 0
@@ -30,10 +30,11 @@ def main():
     try:
         while True:
             # print('acquiring')
-            frames = pipe.wait_for_frames(1000*15)
+            frames = pipe.wait_for_frames()
             # frames = device.pipeline.poll_for_frames()
             left = frames.get_infrared_frame(1)
             right = frames.get_infrared_frame(2)
+            
             if not left or not right:
                 continue
             left, right = np.asanyarray(left.get_data()), np.asanyarray(right.get_data())
