@@ -101,13 +101,15 @@ class Device:
             h, w = out.shape
             if self.save:
                 out = cv2.resize(out, (w//2,h//2),cv2.INTER_NEAREST)
+                out_height = h//2
             else:
                 out = cv2.resize(out, (w//3*2,h//3*2),cv2.INTER_NEAREST)
+                out_height = h//3*2
             out = cv2.cvtColor(out, cv2.COLOR_GRAY2RGB)
                     
             # string = '%.4f' %(time_acq*1000)
             string = '%s:%07d' %(self.name, count)
-            cv2.putText(out,string,(10,h-20), self.font, 0.5,(0,0,255),2,cv2.LINE_AA)
+            cv2.putText(out,string,(10,out_height-20), self.font, 0.5,(0,0,255),2,cv2.LINE_AA)
             self.latest_frame = out
 
             queue.task_done()
@@ -156,13 +158,18 @@ class Device:
             laser_range = ir_sensors.get_option_range(rs.option.laser_power)
             if self.verbose:
                 print("laser power range = " , laser_range.min , "~", laser_range.max)
-            ir_sensors.set_option(rs.option.laser_power,200)
-            ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.laser_power,300)
+            ir_sensors.set_option(rs.option.exposure,650)
             ir_sensors.set_option(rs.option.gain,16)
         elif self.options =='calib':
             ir_sensors.set_option(rs.option.emitter_enabled,0)
             ir_sensors.set_option(rs.option.enable_auto_exposure,0)
             ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.gain,16)
+
+        if self.options=='large':
+            ir_sensors.set_option(rs.option.exposure,750)
+            ir_sensors.set_option(rs.option.laser_power,200)
             ir_sensors.set_option(rs.option.gain,16)
         if self.options=='brighter':
             gain_range = ir_sensors.get_option_range(rs.option.gain)
