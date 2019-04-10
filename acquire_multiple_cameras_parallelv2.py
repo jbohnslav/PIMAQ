@@ -237,7 +237,8 @@ def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
     config.enable_stream(rs.stream.infrared, 1, resolution_width, resolution_height, rs.format.y8, framerate)
     config.enable_stream(rs.stream.infrared, 2, resolution_width, resolution_height, rs.format.y8, framerate)
     device = Device(serial, config, start_t,save=args.save,savedir=datadir, experiment=experiment,
-            name=serial_dict[serial],preview=args.preview,verbose=args.verbose, options=args.options)
+            name=serial_dict[serial],preview=args.preview,verbose=args.verbose, options=args.options,
+            save_format='opencv')
     assert(type(args.master)==str)
     master = True if serial == args.master else False
     sync_mode = 'master' if master else 'slave'
