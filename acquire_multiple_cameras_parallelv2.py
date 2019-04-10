@@ -132,9 +132,57 @@ class Device:
             dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
             dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
             self.fileobj = f
+            # self.metadataobj = f
+            self.write_frames = self.write_frames_hdf5
+        elif self.save_format == 'opencv':
+            fname = self.name + '.avi'
+            subdir = os.path.join(self.savedir, self.experiment)
+            if not os.path.isdir(subdir):
+                os.makedirs(subdir)
+            self.videoobj = cv2.VideoWriter(os.path.join(subdir, fname), fourcc=0, fps=0, 
+                frameSize=(1280,480), isColor=False)
+            f = h5py.File(os.path.join(subdir, self.name+'_metadata.h5'), 'w')
+            # datatype = h5py.special_dtype(vlen=np.dtype('uint8'))
+            # dset = f.create_dataset('left', (0,), maxshape=(None,),dtype=datatype)
+            # dset = f.create_dataset('right', (0,), maxshape=(None,),dtype=datatype)
+            dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
+            dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
+            dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
+            dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
+            dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
+            self.fileobj = f
+            self.write_frames = write_frames_opencv
         else:
             raise NotImplementedError
         print(subdir)
+
+    def write_frames_opencv(self, left, right, framecount, timestamp,
+        arrival_time, sestime, cputime):
+        if not hasattr(self, 'fileobj'):
+            raise ValueError('Writing for camera %s not initialized.' %self.camname)
+        out = np.hstack((left, right))
+        self.videoobj.write(out)
+        append_to_hdf5(self.fileobj,'framecount', framecount)
+        append_to_hdf5(self.fileobj,'timestamp', timestamp)
+        append_to_hdf5(self.fileobj,'arrival_time', arrival_time)
+        append_to_hdf5(self.fileobj,'sestime', sestime)
+        append_to_hdf5(self.fileobj, 'cputime', cputime)
+
+    def write_frames_hdf5(self,left,right, framecount, timestamp,
+                        arrival_time,sestime,cputime):
+        if not hasattr(self, 'fileobj'):
+            raise ValueError('Writing for camera %s not initialized.' %self.camname)
+        # ret1, ret2 = True, True
+        ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,80))
+        ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,80))
+        if ret1 and ret2:
+            append_to_hdf5(self.fileobj, 'left', left_jpg.squeeze())
+            append_to_hdf5(self.fileobj, 'right', right_jpg.squeeze())
+            append_to_hdf5(self.fileobj,'framecount', framecount)
+            append_to_hdf5(self.fileobj,'timestamp', timestamp)
+            append_to_hdf5(self.fileobj,'arrival_time', arrival_time)
+            append_to_hdf5(self.fileobj,'sestime', sestime)
+            append_to_hdf5(self.fileobj, 'cputime', cputime)
 
     def update_settings(self, sync_mode='master'):
         # sensor = self.prof.get_device().first_depth_sensor()
@@ -187,22 +235,6 @@ class Device:
         # ir_sensors.set_option(rs.option.frames_queue_size,7)
         # print(ir_sensors.get_option(rs.option.inter_cam_sync_mode))
 
-    def write_frames(self,left,right, framecount, timestamp,
-                        arrival_time,sestime,cputime):
-        if not hasattr(self, 'fileobj'):
-            raise ValueError('Writing for camera %s not initialized.' %self.camname)
-        # ret1, ret2 = True, True
-        ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,self.jpg_quality))
-        ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,self.jpg_quality))
-        if ret1 and ret2:
-            append_to_hdf5(self.fileobj, 'left', left_jpg.squeeze())
-            append_to_hdf5(self.fileobj, 'right', right_jpg.squeeze())
-            append_to_hdf5(self.fileobj,'framecount', framecount)
-            append_to_hdf5(self.fileobj,'timestamp', timestamp)
-            append_to_hdf5(self.fileobj,'arrival_time', arrival_time)
-            append_to_hdf5(self.fileobj,'sestime', sestime)
-            append_to_hdf5(self.fileobj, 'cputime', cputime)
-
     def stop_streaming(self):
         self.pipeline.stop()
         self.config.disable_all_streams()
@@ -213,6 +245,8 @@ class Device:
             self.stop_streaming()
         if self.save:
             self.fileobj.close()
+            if hasattr(self, 'videoobj'):
+                self.videoobj.release()
         if self.preview:
             cv2.destroyWindow(self.name)
         print('Destructor called, cam %s deleted.' %self.name) 
