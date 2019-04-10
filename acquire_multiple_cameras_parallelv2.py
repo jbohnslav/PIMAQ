@@ -161,11 +161,13 @@ class Device:
             ir_sensors.set_option(rs.option.laser_power,300)
             ir_sensors.set_option(rs.option.exposure,650)
             ir_sensors.set_option(rs.option.gain,16)
+
         elif self.options =='calib':
             ir_sensors.set_option(rs.option.emitter_enabled,0)
             ir_sensors.set_option(rs.option.enable_auto_exposure,0)
-            ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.exposure,1500)
             ir_sensors.set_option(rs.option.gain,16)
+            self.jpg_quality = 99
 
         if self.options=='large':
             ir_sensors.set_option(rs.option.exposure,750)
@@ -190,8 +192,8 @@ class Device:
         if not hasattr(self, 'fileobj'):
             raise ValueError('Writing for camera %s not initialized.' %self.camname)
         # ret1, ret2 = True, True
-        ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,80))
-        ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,80))
+        ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,self.jpg_quality))
+        ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,self.jpg_quality))
         if ret1 and ret2:
             append_to_hdf5(self.fileobj, 'left', left_jpg.squeeze())
             append_to_hdf5(self.fileobj, 'right', right_jpg.squeeze())
@@ -227,8 +229,8 @@ def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
         resolution_height = 480
         framerate=60
     elif args.options=='calib':
-        resolution_width=480
-        resolution_height=270
+        resolution_width=640
+        resolution_height=480
         framerate=6
     else:
         raise NotImplementedError
@@ -279,7 +281,8 @@ def run_loop(device):
                 device.write_frames(left, right, framecount, timestamp,
                     arrival_time, sestime, cputime)
                 # if saving, be more stringent about previewing
-                condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
+                # condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
+                condition = (time.perf_counter()-start_t)*1000<50 and framecount%5==0
             else:
                 condition = True
 
