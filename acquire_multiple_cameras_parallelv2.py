@@ -55,6 +55,7 @@ class Device:
         self.preview=preview
         self.verbose = verbose
         self.options = options
+        self.started = False
         # print('Done.')
 
     def start(self, sync_mode='slave'):
@@ -79,6 +80,7 @@ class Device:
             print('saving initialized: %s' %self.name)
         if self.preview:
             self.initialize_preview()
+        self.started= True
 
     def initialize_preview(self):
         cv2.namedWindow(self.name, cv2.WINDOW_AUTOSIZE)
@@ -229,16 +231,27 @@ class Device:
         # print(ir_sensors.get_option(rs.option.inter_cam_sync_mode))
 
     def stop_streaming(self):
-        self.pipeline.stop()
-        self.config.disable_all_streams()
+        # print(dir(self.pipeline))
+        try:
+            self.pipeline.stop()
+            self.config.disable_all_streams()
+        except BaseException as e:
+            if self.verbose:
+                print('Probably tried to call stop before a start.')
+                print(e)
+            else:
+                pass
         # print('%s stopped streaming' %self.name)
         # if self.preview:
 
     def stop(self):
-        # print('destructor')
-        # print('Destructor called...') 
-        # print(dir(self))
+        # if self.preview:
+        if not self.started:
+            return
+            
         if self.preview:
+            self.preview_queue.put(None)
+            self.preview_thread.join()
             cv2.destroyWindow(self.name)
         if hasattr(self, 'pipeline'):
             # print('stream')
@@ -246,15 +259,22 @@ class Device:
         if hasattr(self, 'videoobj'):
             # print('videoobj')
             self.videoobj.release()
-            del(self.videoobj)
+            # del(self.videoobj)
         if hasattr(self, 'fileobj'):
             # print('fileobj')
             self.fileobj.close()
-        
+        self.started = False
         print('Cam %s stopped' %self.name) 
 
     def __del__(self):
-        self.stop()
+        try:
+            self.stop()
+        except BaseException as e:
+            if self.verbose:
+                print('Error in destructor of cam %s' %self.name)
+                print(e)
+            else:
+                pass
 
 def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
 
@@ -352,12 +372,12 @@ def run_loop(device):
     finally:
         # don't know why I can't put this in the destructor
         # print(dir(device))
-        if device.preview:
-            device.preview_queue.put(None)
-            device.preview_thread.join()
+        # if device.preview:
+        #     device.preview_queue.put(None)
+        #     device.preview_thread.join()
         # time.sleep(1)
         device.stop()
-        del(device)
+        # del(device)
         # del(device)
         # device = None
 
