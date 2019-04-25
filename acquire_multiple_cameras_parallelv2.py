@@ -55,6 +55,7 @@ class Device:
         self.preview=preview
         self.verbose = verbose
         self.options = options
+        self.started = False
         # print('Done.')
 
     def start(self, sync_mode='slave'):
@@ -79,6 +80,7 @@ class Device:
             print('saving initialized: %s' %self.name)
         if self.preview:
             self.initialize_preview()
+        self.started= True
 
     def initialize_preview(self):
         cv2.namedWindow(self.name, cv2.WINDOW_AUTOSIZE)
@@ -115,53 +117,46 @@ class Device:
             queue.task_done()
 
     def initialize_saving(self):
+        subdir = os.path.join(self.savedir, self.experiment)
+        if not os.path.isdir(subdir):
+            os.makedirs(subdir)
+
+        fname = self.name + '.h5'
+        f = h5py.File(os.path.join(subdir, fname), 'w')
+        dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
+        dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
+
         if self.save_format == 'hdf5':
             # fname = '%s_%s.h5' %(self.experiment, self.name)
-            fname = self.name + '.h5'
-            subdir = os.path.join(self.savedir, self.experiment)
-            if not os.path.isdir(subdir):
-                os.makedirs(subdir)
-            # fname = self.experiment + '.h5'
-            f = h5py.File(os.path.join(subdir, fname), 'w')
             datatype = h5py.special_dtype(vlen=np.dtype('uint8'))
             dset = f.create_dataset('left', (0,), maxshape=(None,),dtype=datatype)
             dset = f.create_dataset('right', (0,), maxshape=(None,),dtype=datatype)
-            dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
-            dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
-            self.fileobj = f
+
             # self.metadataobj = f
             self.write_frames = self.write_frames_hdf5
         elif self.save_format == 'opencv':
-            fname = self.name + '.avi'
-            subdir = os.path.join(self.savedir, self.experiment)
-            if not os.path.isdir(subdir):
-                os.makedirs(subdir)
-            self.videoobj = cv2.VideoWriter(os.path.join(subdir, fname), fourcc=0, fps=0, 
-                frameSize=(1280,480), isColor=False)
-            f = h5py.File(os.path.join(subdir, self.name+'_metadata.h5'), 'w')
-            # datatype = h5py.special_dtype(vlen=np.dtype('uint8'))
-            # dset = f.create_dataset('left', (0,), maxshape=(None,),dtype=datatype)
-            # dset = f.create_dataset('right', (0,), maxshape=(None,),dtype=datatype)
-            dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
-            dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
-            dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
-            self.fileobj = f
-            self.write_frames = write_frames_opencv
+            movname = self.name + '_%04d.bmp'
+            # movname = self.name + '.mov'
+            # fourcc = cv2.VideoWriter_fourcc(*'raw ')
+            # fourcc = 
+            self.videoobj = cv2.VideoWriter(os.path.join(subdir, movname), fourcc=0, fps=0, 
+                frameSize=(1280,480))
+            self.write_frames = self.write_frames_opencv
         else:
             raise NotImplementedError
+        self.fileobj = f
         print(subdir)
 
     def write_frames_opencv(self, left, right, framecount, timestamp,
         arrival_time, sestime, cputime):
         if not hasattr(self, 'fileobj'):
             raise ValueError('Writing for camera %s not initialized.' %self.camname)
-        out = np.hstack((left, right))
-        self.videoobj.write(out)
+        # out = 
+        # out = np.hstack((left, right))
+        self.videoobj.write(cv2.cvtColor(np.hstack((left, right)), cv2.COLOR_GRAY2BGR))
         append_to_hdf5(self.fileobj,'framecount', framecount)
         append_to_hdf5(self.fileobj,'timestamp', timestamp)
         append_to_hdf5(self.fileobj,'arrival_time', arrival_time)
@@ -209,11 +204,13 @@ class Device:
             ir_sensors.set_option(rs.option.laser_power,300)
             ir_sensors.set_option(rs.option.exposure,650)
             ir_sensors.set_option(rs.option.gain,16)
+
         elif self.options =='calib':
             ir_sensors.set_option(rs.option.emitter_enabled,0)
             ir_sensors.set_option(rs.option.enable_auto_exposure,0)
-            ir_sensors.set_option(rs.option.exposure,1000)
+            ir_sensors.set_option(rs.option.exposure,1200)
             ir_sensors.set_option(rs.option.gain,16)
+            self.jpg_quality = 99
 
         if self.options=='large':
             ir_sensors.set_option(rs.option.exposure,750)
@@ -233,22 +230,51 @@ class Device:
         # ir_sensors.set_option(rs.option.frames_queue_size,7)
         # print(ir_sensors.get_option(rs.option.inter_cam_sync_mode))
 
-
     def stop_streaming(self):
-        self.pipeline.stop()
-        self.config.disable_all_streams()
+        # print(dir(self.pipeline))
+        try:
+            self.pipeline.stop()
+            self.config.disable_all_streams()
+        except BaseException as e:
+            if self.verbose:
+                print('Probably tried to call stop before a start.')
+                print(e)
+            else:
+                pass
+        # print('%s stopped streaming' %self.name)
         # if self.preview:
 
-    def __del__(self):
-        if hasattr(self, 'pipeline'):
-            self.stop_streaming()
-        if self.save:
-            self.fileobj.close()
-            if hasattr(self, 'videoobj'):
-                self.videoobj.release()
+    def stop(self):
+        # if self.preview:
+        if not self.started:
+            return
+            
         if self.preview:
+            self.preview_queue.put(None)
+            self.preview_thread.join()
             cv2.destroyWindow(self.name)
-        print('Destructor called, cam %s deleted.' %self.name) 
+        if hasattr(self, 'pipeline'):
+            # print('stream')
+            self.stop_streaming()
+        if hasattr(self, 'videoobj'):
+            # print('videoobj')
+            self.videoobj.release()
+            # del(self.videoobj)
+        if hasattr(self, 'fileobj'):
+            # print('fileobj')
+            self.fileobj.close()
+        self.started = False
+        print('Cam %s stopped' %self.name) 
+
+    def __del__(self):
+        try:
+            self.stop()
+        except BaseException as e:
+            if self.verbose:
+                print('Error in destructor of cam %s' %self.name)
+                print(e)
+            else:
+                pass
 
 def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
 
@@ -262,15 +288,16 @@ def initialize_and_loop(serial,args,datadir, experiment, serial_dict,start_t):
         resolution_height = 480
         framerate=60
     elif args.options=='calib':
-        resolution_width=480
-        resolution_height=270
+        resolution_width=640
+        resolution_height=480
         framerate=6
     else:
         raise NotImplementedError
     config.enable_stream(rs.stream.infrared, 1, resolution_width, resolution_height, rs.format.y8, framerate)
     config.enable_stream(rs.stream.infrared, 2, resolution_width, resolution_height, rs.format.y8, framerate)
     device = Device(serial, config, start_t,save=args.save,savedir=datadir, experiment=experiment,
-            name=serial_dict[serial],preview=args.preview,verbose=args.verbose, options=args.options)
+            name=serial_dict[serial],preview=args.preview,verbose=args.verbose, options=args.options,
+            save_format='opencv')
     assert(type(args.master)==str)
     master = True if serial == args.master else False
     sync_mode = 'master' if master else 'slave'
@@ -314,7 +341,8 @@ def run_loop(device):
                 device.write_frames(left, right, framecount, timestamp,
                     arrival_time, sestime, cputime)
                 # if saving, be more stringent about previewing
-                condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
+                # condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
+                condition = (time.perf_counter()-start_t)*1000<50 and framecount%5==0
             else:
                 condition = True
 
@@ -343,10 +371,15 @@ def run_loop(device):
         # print('User stopped acquisition.')
     finally:
         # don't know why I can't put this in the destructor
-        if device.preview:
-            device.preview_queue.put(None)
-            device.preview_thread.join()
-        del(device)
+        # print(dir(device))
+        # if device.preview:
+        #     device.preview_queue.put(None)
+        #     device.preview_thread.join()
+        # time.sleep(1)
+        device.stop()
+        # del(device)
+        # del(device)
+        # device = None
 
 def main():
     parser = argparse.ArgumentParser(description='Acquire from multiple RealSenses.')
@@ -385,7 +418,7 @@ def main():
             serial_dict[serial] = None
 
     # Start streaming
-    experiment = '%s_%s' %(args.mouse, time.strftime('%y%M%d_%H%M%S', time.localtime()))
+    experiment = '%s_%s' %(args.mouse, time.strftime('%y%m%d_%H%M%S', time.localtime()))
 
     """
     Originally I wanted to initialize each device, then pass each device to "run_loop" 
