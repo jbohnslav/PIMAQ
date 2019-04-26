@@ -112,8 +112,8 @@ class Device:
             self.write_frame = write_frame_opencv
         elif movie_format == 'ffmpeg':
             self.initialization_func = initialize_ffmpeg
-            self.write_frame = write_frame_ffmpeg
-    
+            self.write_frame = write_frame_ffmpeg        
+
     def process(self):
         # should be overridden by all subclasses
         raise NotImplementedError    
@@ -244,6 +244,10 @@ class Device:
         # print(dir(self.pipeline))
         raise NotImplementedError
 
+    def loop(self):
+        # should be overridden by subclass
+        raise NotImplementedError
+
     def stop(self):
         # if self.preview:
         if not self.started:
@@ -293,11 +297,37 @@ class Device:
                 pass
 
 class Realsense(Device):
-    def __init__(self,serial, config,
+    def __init__(self,serial,
                  start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
         movie_format='hdf5',metadata_format='hdf5', preview=False,verbose=False,options=None):
+        # use these options to override input width and height
+        config = rs.config()
+        if options=='default' or options=='brighter':
+            width = 480
+            height = 270
+            framerate = 90
+        elif options=='large':
+            width = 640
+            height = 480
+            framerate=60
+        elif options=='calib':
+            width=640
+            height=480
+            framerate=6
+        elif options is None:
+            pass
+        else:
+            raise NotImplementedError
+        # now that we have width and height, call the constructor for the superclass!
+        # we'll inherit all attributes and methods from the Device class
         super().__init__(start_t,height, width, save, savedir, experiment, name, 
                         movie_format, metadata_format, preview, verbose, options)
+
+
+
+        config.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, framerate)
+        config.enable_stream(rs.stream.infrared, 2, width, height, rs.format.y8, framerate)
+
         self.serial = serial
         self.config = config
         
@@ -377,7 +407,71 @@ class Realsense(Device):
             ir_sensors.set_option(rs.option.gain,16)
         # set this to 2 for slave mode, 1 for master!
         ir_sensors.set_option(rs.option.inter_cam_sync_mode, mode)
-        
+    
+    def loop(self):
+        if not hasattr(self, 'pipeline'):
+            raise ValueError('Start must be called before loop!')
+        N_streams =  len(self.prof.get_streams())
+
+        try:
+            should_continue = True
+            while should_continue:
+                
+                # absolutely essential to use poll_for_frames rather than wait_for_frames!
+                # it might work if you run loop in a subthread
+                # but if you use wait_for_frames in the main thread, it will block execution
+                # of subthreads, like writing to disk, etc
+                frames = self.pipeline.poll_for_frames()
+                if frames.size() == N_streams:
+                    pass
+                else:
+                    time.sleep(1/400)
+                    continue
+                
+                start_t = time.perf_counter()
+                left = frames.get_infrared_frame(1)
+                right = frames.get_infrared_frame(2)
+                if not left or not right:
+                    continue
+                left, right = np.asanyarray(left.get_data()), np.asanyarray(right.get_data())
+                frame = self.process(left, right)
+                sestime = time.perf_counter() - self.start_t
+                cputime = time.time()
+                framecount = frames.get_frame_number()
+                # by default, milliseconds from 1970. convert to seconds for datetime.datetime
+                arrival_time = frames.get_frame_metadata(rs.frame_metadata_value.time_of_arrival)/1000
+                timestamp = frames.get_timestamp()/1000
+                
+                # print('standard process time: %.6f' %(time.perf_counter() - start_t))
+                # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
+                metadata = (framecount, timestamp, arrival_time, sestime, cputime)
+                if self.save:
+                    self.save_queue.put_nowait((frame, metadata))
+
+                # only output every 10th frame for speed
+                # might be unnecessary
+                if self.preview and framecount % 10 ==0:
+                    self.preview_queue.put_nowait((frame,framecount))
+                    if self.latest_frame is not None:
+                        cv2.imshow(self.name, self.latest_frame)
+                        key = cv2.waitKey(1)
+                        if key==27:
+                            break
+                frames = None
+            
+        except KeyboardInterrupt:
+            print('keyboard interrupt')
+            should_continue = False
+        finally:
+            # don't know why I can't put this in the destructor
+            # print(dir(device))
+            # if device.preview:
+            #     device.preview_queue.put(None)
+            #     device.preview_thread.join()
+            # time.sleep(1)
+            self.stop()
+
+
     def stop_streaming(self):
         # print(dir(self.pipeline))
         try:
