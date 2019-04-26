@@ -202,9 +202,11 @@ class Device:
                 self.write_frame(self.writer_obj, frame)
                 self.write_metadata(*metadata)
 
-                
-                print(queue.qsize())
-                # time.sleep(1/120)
+                # print the size of items in the queue here!
+                # if you're getting large numbers of frames dropped, this is a 
+                # good place to look
+                # queue size
+                # print(queue.qsize())
             except Exception as e:
                 print(e)
             finally:
@@ -230,7 +232,7 @@ class Device:
         writer_obj = self.initialization_func(filename, framesize, codec)
         self.writer_obj = writer_obj
         
-        self.save_queue = Queue(maxsize=600)
+        self.save_queue = Queue(maxsize=3000)
         self.save_thread = Thread(target=self.save_worker, args=(self.save_queue,))
         self.save_thread.daemon = True
         self.save_thread.start()
@@ -320,7 +322,9 @@ class Realsense(Device):
             raise NotImplementedError
         # now that we have width and height, call the constructor for the superclass!
         # we'll inherit all attributes and methods from the Device class
-        super().__init__(start_t,height, width, save, savedir, experiment, name, 
+        # have to double the width in this constructor because we're gonna save the left 
+        # and right images concatenated horizontally
+        super().__init__(start_t,height, width*2, save, savedir, experiment, name, 
                         movie_format, metadata_format, preview, verbose, options)
 
 

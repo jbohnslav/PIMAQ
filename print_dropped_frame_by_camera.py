@@ -15,7 +15,7 @@ def main():
     
     files = os.listdir(args.directory)
     files.sort()
-    files = [os.path.join(args.directory, i) for i in files if i.endswith('.h5')]
+    files = [os.path.join(args.directory, i) for i in files if i.endswith('_metadata.h5')]
 
     for file in files:
         with h5py.File(file, 'r') as f:
