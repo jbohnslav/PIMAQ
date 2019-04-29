@@ -10,11 +10,50 @@ import multiprocessing as mp
 import yaml
 import warnings
 # import queue
-from queue import LifoQueue, Queue, Empty
-from threading import Thread
 from devices import Realsense
+import realsense_utils
+
+datadir = r'D:\DATA\JB\realsense'
+
+def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
+
+    device = Realsense(serial, start_t,height=None, width=None, save=args.save,
+        savedir=datadir, experiment=experiment,
+        name=name,preview=args.preview,verbose=args.verbose, options=args.options,
+        movie_format=args.movie_format)
+
+    device.start()
+    # runs until keyboard interrupt!
+    device.loop()
 
 def main():
+    parser = argparse.ArgumentParser(description='Acquire from multiple RealSenses.')
+    parser.add_argument('-m','--mouse', type=str, default='JB999',
+        help='ID of mouse for file naming.')
+    parser.add_argument('-p', '--preview', default=False, action='store_true',
+        help='Show preview in opencv window')
+    parser.add_argument('-s', '--save', default=False, action='store_true',
+        help='Delete local dirs or not. 0=don''t delete')
+    parser.add_argument('-v', '--verbose', default=False,action='store_true',
+        help='Use this flag to print debugging commands.')
+    parser.add_argument('--master', default='830112071475',type=str,
+        help='Which camera serial number is the "master" camera.')
+    parser.add_argument('-o','--options', default='default',
+        choices=['default','large', 'calib', 'brighter'], type=str,
+        help='Which camera serial number is the "master" camera.')
+    parser.add_argument('--movie_format', default='opencv',
+        choices=['hdf5','opencv', 'ffmpeg'], type=str,
+        help='Method to save files to movies. Dramatically affects performance and filesize')
+
+    args = parser.parse_args()
+
+    if args.movie_format == 'ffmpeg':
+        warnings.Warn('ffmpeg uses lots of CPU resources. ' + 
+            '60 Hz, 640x480 fills RAM in 5 minutes. Consider opencv')
+    serials = realsense_utils.enumerate_connected_devices()
+    if args.verbose:
+        print('Serials: ', serials)
+    assert(args.master in serials)
     if os.path.isfile('serials.yaml'):
         with open('serials.yaml') as f:
             serial_dict = yaml.load(f, Loader=yaml.SafeLoader)
@@ -23,123 +62,33 @@ def main():
         serial_dict = {}
         for serial in serials:
             serial_dict[serial] = None
-
-    serial = '830112071475'
+    """
+    Originally I wanted to initialize each device, then pass each device to "run_loop" 
+    in its own process. However, pyrealsense2 config objects and pyrealsense2 pipeline objects
+    are not pickle-able, and python pickles arguments before passing them to a process. Therefore,
+    you have to initialize the configuration and the pipeline from within the process already!
+    """
     start_t = time.perf_counter()
-    options = 'large'
-    save = True
-    preview = True
-    verbose=True
+    tuples = []
+    # make a name for this experiment
+    experiment = '%s_%s' %(args.mouse, time.strftime('%y%m%d_%H%M%S', time.localtime()))
+    for serial in serials:
 
-    datadir = r'D:\DATA\JB\realsense'
-    experiment = 'testing_inheritance_%s' %time.strftime('%y%m%d_%H%M%S', time.localtime())
-    # name = serial_dict
+        tup = (serial, args, datadir, experiment, serial_dict[serial],start_t)
+        tuples.append(tup)
+    if args.verbose:
+        print('Tuples created, starting...')
 
-    config = rs.config()
-    if options=='default' or options=='brighter':
-        resolution_width = 480
-        resolution_height = 270
-        framerate = 90
-    elif options=='large':
-        resolution_width = 640
-        resolution_height = 480
-        framerate=60
-    elif options=='calib':
-        resolution_width=640
-        resolution_height=480
-        framerate=6
-    else:
-        raise NotImplementedError
-    config.enable_stream(rs.stream.infrared, 1, resolution_width, resolution_height, rs.format.y8, framerate)
-    config.enable_stream(rs.stream.infrared, 2, resolution_width, resolution_height, rs.format.y8, framerate)
-    device = Realsense(serial, config, start_t,resolution_height, resolution_width*2, save=save,
-                       savedir=datadir, experiment=experiment,
-            name=serial_dict[serial],preview=preview,verbose=verbose, options=options,
-            movie_format='ffmpeg')
+    with mp.Pool(len(serials)) as p:
+        try:
+            p.starmap(initialize_and_loop, tuples)  
+        except KeyboardInterrupt:
+            print('User interrupted acquisition')
 
-    device.start()
-    N_streams =  len(device.prof.get_streams())
-    try:
-        should_continue = True
-        while should_continue:
-            # print('acquiring')
-            # frames = device.pipeline.wait_for_frames(1000*10)
-            # frames =  rs.composite_frame(rs.frame())
-            # frames = rs.composite_frame(rs.frame())
-            # frames = rs.composite_frame(rs.frame())
-            # device.pipeline.poll_for_frames(frames)
-            # print(frames.size())
-            
-            frames = device.pipeline.poll_for_frames()
-            # print('frames size: ', frames.size())
-            # print('streams size: ', len(streams))
-            if frames.size() == N_streams:
-                pass
-            else:
-                time.sleep(1/400)
-                continue
-            # if frames is not None:
-            #     pass
-            # else:
-            #     time.sleep(1/200)
-            #     continue
-            # if device.pipeline.poll_for_frame
-            # frames = framequeue.wait_for_frame(1000*10)
-            # frame = framequeue.poll_for_frame()
-            # frames = framequeue.poll_for_frame()
-            # print(frames)
-            # if frames:
-                # print(dir(frames))
-            start_t = time.perf_counter()
-            # frames = device.pipeline.poll_for_frames()
-
-            left = frames.get_infrared_frame(1)
-            right = frames.get_infrared_frame(2)
-            if not left or not right:
-                continue
-            left, right = np.asanyarray(left.get_data()), np.asanyarray(right.get_data())
-            frame = device.process(left, right)
-            sestime = time.perf_counter() - device.start_t
-            cputime = time.time()
-            framecount = frames.get_frame_number()
-            # by default, milliseconds from 1970. convert to seconds for datetime.datetime
-            arrival_time = frames.get_frame_metadata(rs.frame_metadata_value.time_of_arrival)/1000
-            timestamp = frames.get_timestamp()/1000
-            
-            # print('standard process time: %.6f' %(time.perf_counter() - start_t))
-            # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
-            metadata = (framecount, timestamp, arrival_time, sestime, cputime)
-            if device.save:
-                device.save_queue.put_nowait((frame, metadata))
-                #             device.write_frame(frame, framecount, timestamp,
-                #                 arrival_time, sestime, cputime)
-                # if saving, be more stringent about previewing
-                # condition = (time.perf_counter()-start_t)*1000<8 and framecount%5==0
-              
-
-            # print(time.perf_counter()-start_t)
-            if device.preview and framecount % 10 ==0:
-                # print(time.perf_counter()-start_t)
-                device.preview_queue.put_nowait((frame,framecount))
-                if device.latest_frame is not None:
-                    cv2.imshow(device.name, device.latest_frame)
-                    key = cv2.waitKey(1)
-                    if key==27:
-                        break
-            frames = None
-        
-    except KeyboardInterrupt:
-        print('keyboard interrupt')
-        should_continue = False
-        # print('User stopped acquisition.')
-    finally:
-        # don't know why I can't put this in the destructor
-        # print(dir(device))
-        # if device.preview:
-        #     device.preview_queue.put(None)
-        #     device.preview_thread.join()
-        # time.sleep(1)
-        device.stop()
+    if args.preview:
+        cv2.destroyAllWindows()
+    
+    
 
 if __name__=='__main__':
     main()
