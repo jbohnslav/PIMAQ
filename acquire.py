@@ -62,10 +62,6 @@ def main():
         serial_dict = {}
         for serial in serials:
             serial_dict[serial] = None
-
-    # Start streaming
-    experiment = '%s_%s' %(args.mouse, time.strftime('%y%m%d_%H%M%S', time.localtime()))
-
     """
     Originally I wanted to initialize each device, then pass each device to "run_loop" 
     in its own process. However, pyrealsense2 config objects and pyrealsense2 pipeline objects
@@ -74,6 +70,8 @@ def main():
     """
     start_t = time.perf_counter()
     tuples = []
+    # make a name for this experiment
+    experiment = '%s_%s' %(args.mouse, time.strftime('%y%m%d_%H%M%S', time.localtime()))
     for serial in serials:
 
         tup = (serial, args, datadir, experiment, serial_dict[serial],start_t)
