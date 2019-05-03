@@ -414,7 +414,7 @@ class Realsense(Device):
             ir_sensors.set_option(rs.option.gain,16)
         # set this to 2 for slave mode, 1 for master!
         ir_sensors.set_option(rs.option.inter_cam_sync_mode, mode)
-    
+        # print('sync mode ', ir_sensors.get_option(rs.option.inter_cam_sync_mode))
     def loop(self):
         if not hasattr(self, 'pipeline'):
             raise ValueError('Start must be called before loop!')

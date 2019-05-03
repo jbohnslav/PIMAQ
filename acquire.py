@@ -22,7 +22,12 @@ def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
         name=name,preview=args.preview,verbose=args.verbose, options=args.options,
         movie_format=args.movie_format)
 
-    device.start()
+    # sync_mode = 'master' if serial == args.master else 'slave'
+    if serial == args.master:
+        device.start(sync_mode='master')
+    else:
+        time.sleep(3)
+        device.start()
     # runs until keyboard interrupt!
     device.loop()
 
