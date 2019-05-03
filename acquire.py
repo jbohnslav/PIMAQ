@@ -2,7 +2,7 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import h5py
 import os
 import argparse
@@ -38,7 +38,7 @@ def main():
         help='Use this flag to print debugging commands.')
     parser.add_argument('--master', default='830112071475',type=str,
         help='Which camera serial number is the "master" camera.')
-    parser.add_argument('-o','--options', default='default',
+    parser.add_argument('-o','--options', default='large',
         choices=['default','large', 'calib', 'brighter'], type=str,
         help='Which camera serial number is the "master" camera.')
     parser.add_argument('--movie_format', default='opencv',

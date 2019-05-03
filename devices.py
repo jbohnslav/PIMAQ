@@ -328,7 +328,6 @@ class Realsense(Device):
                         movie_format, metadata_format, preview, verbose, options)
 
 
-
         config.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, framerate)
         config.enable_stream(rs.stream.infrared, 2, width, height, rs.format.y8, framerate)
 
@@ -379,9 +378,11 @@ class Realsense(Device):
         
         this_device = self.prof.get_device()
         ir_sensors = this_device.query_sensors()[0] # 1 for RGB
+        ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+
         if self.options=='default' or self.options=='large':
             ir_sensors.set_option(rs.option.emitter_enabled,1)
-            ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+            
             laser_pwr = ir_sensors.get_option(rs.option.laser_power)
             if self.verbose:
                 print("laser power = ", laser_pwr)
@@ -389,12 +390,13 @@ class Realsense(Device):
             if self.verbose:
                 print("laser power range = " , laser_range.min , "~", laser_range.max)
             ir_sensors.set_option(rs.option.laser_power,300)
+            
             ir_sensors.set_option(rs.option.exposure,650)
             ir_sensors.set_option(rs.option.gain,16)
 
         elif self.options =='calib':
             ir_sensors.set_option(rs.option.emitter_enabled,0)
-            ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+            # ir_sensors.set_option(rs.option.enable_auto_exposure,0)
             ir_sensors.set_option(rs.option.exposure,1200)
             ir_sensors.set_option(rs.option.gain,16)
             self.jpg_quality = 99
@@ -403,6 +405,7 @@ class Realsense(Device):
             ir_sensors.set_option(rs.option.exposure,750)
             ir_sensors.set_option(rs.option.laser_power,200)
             ir_sensors.set_option(rs.option.gain,16)
+
         if self.options=='brighter':
             gain_range = ir_sensors.get_option_range(rs.option.gain)
             if self.verbose:
