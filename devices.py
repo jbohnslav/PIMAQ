@@ -39,7 +39,7 @@ def initialize_opencv(filename, framesize, codec):
         filename = filename + '.avi'
         fourcc = cv2.VideoWriter_fourcc(*codec)
         fps=30
-    writer = cv2.VideoWriter(filename,fourcc=fourcc, fps=fps, framesize)
+    writer = cv2.VideoWriter(filename,fourcc, fps, framesize)
     return(writer)
 
 def write_frame_opencv(writer_obj, frame):

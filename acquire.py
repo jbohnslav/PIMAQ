@@ -22,7 +22,7 @@ def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
     
     device = Realsense(serial, start_t,height=None, width=None, save=args.save,
         savedir=datadir, experiment=experiment,
-        name=name,preview=args.preview,verbose=args.verbose, options=args.options,
+        name=name,uncompressed=uncompressed,preview=args.preview,verbose=args.verbose, options=args.options,
         movie_format=args.movie_format)
 
     # sync_mode = 'master' if serial == args.master else 'slave'
