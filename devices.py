@@ -31,10 +31,17 @@ def write_frame_hdf5(writer_obj, frame, axis=0):
     writer_obj['frame'][-1]=jpg.squeeze()
      
 def initialize_opencv(filename, framesize, codec):
-    filename = filename + '.avi'
-    fourcc = cv2.VideoWriter_fourcc(*codec)
-    writer = cv2.VideoWriter(filename,fourcc, 30, framesize)
+    if codec == 0:
+        filename = filename + '_%05d.bmp'
+        fourcc = 0
+        fps=0
+    else:
+        filename = filename + '.avi'
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        fps=30
+    writer = cv2.VideoWriter(filename,fourcc=fourcc, fps=fps, framesize)
     return(writer)
+
 def write_frame_opencv(writer_obj, frame):
     # out = cv2.cvtColor(np.hstack((left, right)), cv2.COLOR_GRAY2RGB)
     # t0 = time.perf_counter()
@@ -81,8 +88,9 @@ def append_to_hdf5(f, name, value, axis=0):
 
 class Device:
     def __init__(self, start_t=None,height=None,width=None,save=False,savedir=None,
-                 experiment=None, name=None,
-        movie_format='hdf5',metadata_format='hdf5', preview=False,verbose=False,options=None):
+                experiment=None, name=None,
+                movie_format='hdf5',metadata_format='hdf5', uncompressed=False,
+                preview=False,verbose=False,options=None):
         # print('Initializing %s' %name)
         # self.config = config
         # self.serial = serial
@@ -91,6 +99,7 @@ class Device:
         self.savedir = savedir
         self.experiment = experiment
         self.name = name
+        self.uncompressed = uncompressed
         # self.save_format=save_format
         self.preview=preview
         self.verbose = verbose
@@ -227,7 +236,10 @@ class Device:
             raise NotImplementedError
         
         framesize = (self.width, self.height)
-        codec = 'DIVX'
+        if self.uncompressed:
+            codec = 0
+        else:
+            codec = 'DIVX'
         filename = os.path.join(self.directory, self.name)
         writer_obj = self.initialization_func(filename, framesize, codec)
         self.writer_obj = writer_obj
@@ -301,7 +313,7 @@ class Device:
 class Realsense(Device):
     def __init__(self,serial,
                  start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
-        movie_format='hdf5',metadata_format='hdf5', preview=False,verbose=False,options=None):
+        movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None):
         # use these options to override input width and height
         config = rs.config()
         if options=='default' or options=='brighter':
@@ -325,7 +337,7 @@ class Realsense(Device):
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
         super().__init__(start_t,height, width*2, save, savedir, experiment, name, 
-                        movie_format, metadata_format, preview, verbose, options)
+                        movie_format, metadata_format, uncompressed,preview, verbose, options)
 
 
         config.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, framerate)

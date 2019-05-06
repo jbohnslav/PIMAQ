@@ -17,6 +17,9 @@ datadir = r'D:\DATA\JB\realsense'
 
 def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
 
+    uncompressed = True if args.options=='calib' else False
+
+    
     device = Realsense(serial, start_t,height=None, width=None, save=args.save,
         savedir=datadir, experiment=experiment,
         name=name,preview=args.preview,verbose=args.verbose, options=args.options,
