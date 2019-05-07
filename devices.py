@@ -32,7 +32,7 @@ def write_frame_hdf5(writer_obj, frame, axis=0):
      
 def initialize_opencv(filename, framesize, codec):
     if codec == 0:
-        filename = filename + '_%05d.bmp'
+        filename = filename + '_%06d.bmp'
         fourcc = 0
         fps=0
     else:
@@ -327,7 +327,7 @@ class Realsense(Device):
         elif options=='calib':
             width=640
             height=480
-            framerate=6
+            framerate=60
         elif options is None:
             pass
         else:
