@@ -172,27 +172,13 @@ class Device:
 
             queue.task_done()
         
-    
     def initialize_metadata_saving_hdf5(self):
-        fname = os.path.join(self.directory, self.name + '_metadata.h5')
-        f = h5py.File(fname, 'w')
-        
-        dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
-        dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
-        dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
-        dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
-        dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
-        
-        self.metadata_obj = f
+        # should be overridden by all subclasses
+        raise NotImplementedError
         
     def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
-        # t0 = time.perf_counter()
-        append_to_hdf5(self.metadata_obj,'framecount', framecount)
-        append_to_hdf5(self.metadata_obj,'timestamp', timestamp)
-        append_to_hdf5(self.metadata_obj,'arrival_time', arrival_time)
-        append_to_hdf5(self.metadata_obj,'sestime', sestime)
-        append_to_hdf5(self.metadata_obj, 'cputime', cputime)
-        # print('metadata writing t: %.6f' %( (time.perf_counter() - t0)*1000 ))
+        # should be overridden by all subclasses
+        raise NotImplementedError
 
     def save_worker(self, queue):
         should_continue = True
@@ -489,6 +475,51 @@ class Realsense(Device):
             #     device.preview_thread.join()
             # time.sleep(1)
             self.stop()
+
+    def initialize_metadata_saving_hdf5(self):
+        fname = os.path.join(self.directory, self.name + '_metadata.h5')
+        f = h5py.File(fname, 'w')
+        
+        dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
+        dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('arrival_time',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
+        
+        intrinsics, extrinsics = self.get_intrinsic_extrinsic()
+        dset = f.create_dataset('intrinsics', (3,3), dtype=np.float64)
+        f['intrinsics'] = intrinsics
+        dset = f.create_dataset('extrinsics', (3,4), dtype=np.float64)
+        f['extrinsics'] = extrinsics
+
+        self.metadata_obj = f
+        
+    def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
+        # t0 = time.perf_counter()
+        append_to_hdf5(self.metadata_obj,'framecount', framecount)
+        append_to_hdf5(self.metadata_obj,'timestamp', timestamp)
+        append_to_hdf5(self.metadata_obj,'arrival_time', arrival_time)
+        append_to_hdf5(self.metadata_obj,'sestime', sestime)
+        append_to_hdf5(self.metadata_obj, 'cputime', cputime)
+
+    def get_intrinsic_extrinsic(self):
+        intrinsics = self.prof.as_video_stream_profile().get_intrinsics()
+        K = np.zeros((3,3),dtype=np.float64)
+        K[0,0] = intr.fx
+        K[0,2] = intr.ppx
+        K[1,1] = intr.fy
+        K[1,2] = intr.ppy
+        K[2,2] = 1
+
+        extrinsics = self.prof.get_stream(rs.stream.infrared,1).as_video_stream_profile().get_extrinsics_to(self.prof.get_stream(
+            rs.stream.infrared,2))
+        R = extrinsics.rotation.reshape(3,3)
+        t = extrinsics.translation
+
+        extrinsic = np.zeros((3,4), dtype=np.float64)
+        extrinsic[:3,:3] = R
+        extrinsic[:3,3] = t
+        return(K, extrinsic)
 
 
     def stop_streaming(self):
