@@ -487,10 +487,11 @@ class Realsense(Device):
         dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
         
         intrinsics, extrinsics = self.get_intrinsic_extrinsic()
-        dset = f.create_dataset('intrinsics', (3,3), dtype=np.float64)
-        f['intrinsics'] = intrinsics
-        dset = f.create_dataset('extrinsics', (3,4), dtype=np.float64)
-        f['extrinsics'] = extrinsics
+        dset = f.create_dataset('intrinsics', data=intrinsics)
+        # print(list(f.keys()))
+        # f['intrinsics'] = intrinsics
+        dset = f.create_dataset('extrinsics', data=extrinsics)
+        # f['extrinsics'] = extrinsics
 
         self.metadata_obj = f
         
@@ -503,18 +504,19 @@ class Realsense(Device):
         append_to_hdf5(self.metadata_obj, 'cputime', cputime)
 
     def get_intrinsic_extrinsic(self):
-        intrinsics = self.prof.as_video_stream_profile().get_intrinsics()
+        intrinsics = self.prof.get_stream(rs.stream.infrared,1).as_video_stream_profile().get_intrinsics()
         K = np.zeros((3,3),dtype=np.float64)
-        K[0,0] = intr.fx
-        K[0,2] = intr.ppx
-        K[1,1] = intr.fy
-        K[1,2] = intr.ppy
+        K[0,0] = intrinsics.fx
+        K[0,2] = intrinsics.ppx
+        K[1,1] = intrinsics.fy
+        K[1,2] = intrinsics.ppy
         K[2,2] = 1
 
         extrinsics = self.prof.get_stream(rs.stream.infrared,1).as_video_stream_profile().get_extrinsics_to(self.prof.get_stream(
             rs.stream.infrared,2))
-        R = extrinsics.rotation.reshape(3,3)
-        t = extrinsics.translation
+        # print(extrinsics.rotation)
+        R = np.array(extrinsics.rotation).reshape(3,3)
+        t = np.array(extrinsics.translation)
 
         extrinsic = np.zeros((3,4), dtype=np.float64)
         extrinsic[:3,:3] = R
