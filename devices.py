@@ -39,6 +39,7 @@ def initialize_opencv(filename, framesize, codec):
         filename = filename + '.avi'
         fourcc = cv2.VideoWriter_fourcc(*codec)
         fps=30
+    # fourcc = -1
     writer = cv2.VideoWriter(filename,fourcc, fps, framesize)
     return(writer)
 
@@ -225,7 +226,8 @@ class Device:
         if self.uncompressed:
             codec = 0
         else:
-            codec = 'DIVX'
+            codec = 'MJPG'
+            # codec = 'AV1 '
         filename = os.path.join(self.directory, self.name)
         writer_obj = self.initialization_func(filename, framesize, codec)
         self.writer_obj = writer_obj
