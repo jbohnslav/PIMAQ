@@ -13,6 +13,8 @@ import warnings
 from queue import LifoQueue, Queue, Empty
 from threading import Thread
 import subprocess as sp
+import PySpin
+import pointgrey_utils as pg
 
 def initialize_hdf5(filename, framesize=None, codec=None):
     filename = filename + '.h5'
@@ -39,6 +41,7 @@ def initialize_opencv(filename, framesize, codec):
         filename = filename + '.avi'
         fourcc = cv2.VideoWriter_fourcc(*codec)
         fps=30
+    # fourcc = -1
     writer = cv2.VideoWriter(filename,fourcc, fps, framesize)
     return(writer)
 
@@ -90,7 +93,7 @@ class Device:
     def __init__(self, start_t=None,height=None,width=None,save=False,savedir=None,
                 experiment=None, name=None,
                 movie_format='hdf5',metadata_format='hdf5', uncompressed=False,
-                preview=False,verbose=False,options=None):
+                preview=False,verbose=False):
         # print('Initializing %s' %name)
         # self.config = config
         # self.serial = serial
@@ -103,11 +106,11 @@ class Device:
         # self.save_format=save_format
         self.preview=preview
         self.verbose = verbose
-        self.options = options
         self.started = False
         self.height = height
         self.width = width
-        
+        # self.master = master
+
         assert(movie_format in ['hdf5', 'opencv', 'ffmpeg'])
         assert(metadata_format in ['hdf5', 'csv'])
         self.movie_format = movie_format
@@ -225,7 +228,8 @@ class Device:
         if self.uncompressed:
             codec = 0
         else:
-            codec = 'DIVX'
+            codec = 'MJPG'
+            # codec = 'AV1 '
         filename = os.path.join(self.directory, self.name)
         writer_obj = self.initialization_func(filename, framesize, codec)
         self.writer_obj = writer_obj
@@ -235,7 +239,7 @@ class Device:
         self.save_thread.daemon = True
         self.save_thread.start()
 
-    def update_settings(self, sync_mode='master'):
+    def update_settings(self):
         # should be overridden by subclass
         raise NotImplementedError
 
@@ -252,6 +256,7 @@ class Device:
         # if self.preview:
         if not self.started:
             return
+        self.stop_streaming()
         if self.save:
             print('Waiting for saving thread to finish on cam %s. DO NOT INTERRUPT' %self.name)
             self.save_queue.put(None)
@@ -262,9 +267,6 @@ class Device:
             self.preview_queue.put(None)
             self.preview_thread.join()
             cv2.destroyWindow(self.name)
-        if hasattr(self, 'pipeline'):
-            # print('stream')
-            self.stop_streaming()
         if hasattr(self, 'writer_obj'):
             # print('videoobj')
             if self.movie_format == 'opencv':
@@ -299,7 +301,8 @@ class Device:
 class Realsense(Device):
     def __init__(self,serial,
                  start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
-        movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None):
+        movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None, 
+        master=False):
         # use these options to override input width and height
         config = rs.config()
         if options=='default' or options=='brighter':
@@ -323,7 +326,7 @@ class Realsense(Device):
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
         super().__init__(start_t,height, width*2, save, savedir, experiment, name, 
-                        movie_format, metadata_format, uncompressed,preview, verbose, options)
+                        movie_format, metadata_format, uncompressed,preview, verbose)
 
 
         config.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, framerate)
@@ -331,6 +334,8 @@ class Realsense(Device):
 
         self.serial = serial
         self.config = config
+        self.master = master
+        self.options = options
         
     def process(self, left, right):
         # t0 = time.perf_counter()
@@ -339,7 +344,7 @@ class Realsense(Device):
         # print('process t: %.6f' %( (time.perf_counter() - t0)*1000 ))
         return(out)
     
-    def start(self, sync_mode='slave'):
+    def start(self):
         pipeline = rs.pipeline()
         self.config.enable_device(self.serial)
         try:
@@ -355,7 +360,7 @@ class Realsense(Device):
         self.pipeline = pipeline
         self.prof = pipeline_profile
         time.sleep(1)
-        self.update_settings(sync_mode)
+        self.update_settings()
         if self.save:
             self.initialize_saving()
             print('saving initialized: %s' %self.name)
@@ -363,13 +368,13 @@ class Realsense(Device):
             self.initialize_preview()
         self.started= True
         
-    def update_settings(self, sync_mode='master'):
+    def update_settings(self):
         # sensor = self.prof.get_device().first_depth_sensor()
         # print(dir(sensor))
         # sensor.set_option(rs.option.emitter_enabled,1)
-        if sync_mode=='master':
+        if self.master:
             mode = 1
-        elif sync_mode == 'slave':
+        else:
             mode = 2
         if self.verbose:
             print('%s: %s,%d' %(self.name, sync_mode, mode))
@@ -487,10 +492,11 @@ class Realsense(Device):
         dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
         
         intrinsics, extrinsics = self.get_intrinsic_extrinsic()
-        dset = f.create_dataset('intrinsics', (3,3), dtype=np.float64)
-        f['intrinsics'] = intrinsics
-        dset = f.create_dataset('extrinsics', (3,4), dtype=np.float64)
-        f['extrinsics'] = extrinsics
+        dset = f.create_dataset('intrinsics', data=intrinsics)
+        # print(list(f.keys()))
+        # f['intrinsics'] = intrinsics
+        dset = f.create_dataset('extrinsics', data=extrinsics)
+        # f['extrinsics'] = extrinsics
 
         self.metadata_obj = f
         
@@ -503,18 +509,19 @@ class Realsense(Device):
         append_to_hdf5(self.metadata_obj, 'cputime', cputime)
 
     def get_intrinsic_extrinsic(self):
-        intrinsics = self.prof.as_video_stream_profile().get_intrinsics()
+        intrinsics = self.prof.get_stream(rs.stream.infrared,1).as_video_stream_profile().get_intrinsics()
         K = np.zeros((3,3),dtype=np.float64)
-        K[0,0] = intr.fx
-        K[0,2] = intr.ppx
-        K[1,1] = intr.fy
-        K[1,2] = intr.ppy
+        K[0,0] = intrinsics.fx
+        K[0,2] = intrinsics.ppx
+        K[1,1] = intrinsics.fy
+        K[1,2] = intrinsics.ppy
         K[2,2] = 1
 
         extrinsics = self.prof.get_stream(rs.stream.infrared,1).as_video_stream_profile().get_extrinsics_to(self.prof.get_stream(
             rs.stream.infrared,2))
-        R = extrinsics.rotation.reshape(3,3)
-        t = extrinsics.translation
+        # print(extrinsics.rotation)
+        R = np.array(extrinsics.rotation).reshape(3,3)
+        t = np.array(extrinsics.translation)
 
         extrinsic = np.zeros((3,4), dtype=np.float64)
         extrinsic[:3,:3] = R
@@ -527,6 +534,186 @@ class Realsense(Device):
         try:
             self.pipeline.stop()
             self.config.disable_all_streams()
+        except BaseException as e:
+            if self.verbose:
+                print('Probably tried to call stop before a start.')
+                print(e)
+            else:
+                pass
+
+
+class PointGrey(Device):
+    def __init__(self,serial,
+                 start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
+        movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None):
+        # use these options to override input width and height
+        # Retrieve singleton reference to system object
+        system = PySpin.System.GetInstance()
+
+
+        # now that we have width and height, call the constructor for the superclass!
+        # we'll inherit all attributes and methods from the Device class
+        # have to double the width in this constructor because we're gonna save the left 
+        # and right images concatenated horizontally
+        super().__init__(start_t,height, width, save, savedir, experiment, name, 
+                        movie_format, metadata_format, uncompressed,preview, verbose)
+
+        version = system.GetLibraryVersion()
+        if verbose:
+            print('Library version: %d.%d.%d.%d' % (version.major, version.minor, version.type, version.build))
+
+        # Retrieve list of cameras from the system
+        cam_list = system.GetCameras()
+        num_cameras = cam_list.GetSize()
+        if verbose:
+            print('Number of cameras detected: %d' % num_cameras)
+
+        self.cam = None
+        for c in cam_list:
+            this_serial = pg.get_serial_number(c)
+            if int(this_serial) == int(serial):
+                self.cam = c
+        if self.cam is None:
+            raise ValueError('Didn''t find serial! %s' %serial)
+        cam_list.Clear()
+        self.cam.Init()
+
+        self.nodemap = self.cam.GetNodeMap()
+        self.serial = serial
+        # self.cam = cam
+        self.system = system
+        self.options = options
+        self.verbose=verbose
+
+    def process(self, frame):
+        # t0 = time.perf_counter()
+        out = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+        # print('process t: %.6f' %( (time.perf_counter() - t0)*1000 ))
+        return(out)
+    
+    def start(self, sync_mode=None):
+
+        self.update_settings()
+        self.cam.BeginAcquisition()
+        if self.save:
+            self.initialize_saving()
+            print('saving initialized: %s' %self.name)
+        if self.preview:
+            self.initialize_preview()
+        self.started= True
+        
+    def update_settings(self):
+        """ Updates PointGrey camera settings.
+        Attributes, types, and range of possible values for each attribute are available
+        in the camera documentation. 
+        These are extraordinarily tricky! Order matters! For exampple, ExposureAuto must be set
+        to Off before ExposureTime can be set. 
+        """
+        pg.set_value(self.nodemap, 'AcquisitionMode', 'Continuous')
+        pg.set_value(self.nodemap, 'ExposureAuto', 'Off')
+        # note, can't change horizontal, but changing vertical
+        # changes horizontal automatically
+        pg.set_value(self.nodemap, 'BinningVertical', 2)
+
+        pg.set_value(self.nodemap, 'Height', 512)
+        pg.set_value(self.nodemap, 'Width', 640)
+        pg.set_value(self.nodemap, 'OffsetX', 0)
+        pg.set_value(self.nodemap, 'OffsetY', 0)
+        pg.set_value(self.nodemap, 'PixelFormat', 'Mono8')
+        pg.set_value(self.nodemap, 'AcquisitionFrameRate', 60.0)
+
+        pg.set_value(self.nodemap, 'ExposureTime', 1*1000.0) #  in us
+        pg.set_value(self.nodemap, 'GainAuto', 'Off') 
+        pg.set_value(self.nodemap, 'Gain', 10.0)
+
+        pg.set_value(self.nodemap, 'SharpnessAuto', 'Off') 
+
+        # changing strobe involves multiple variables in the correct order, so I've bundled
+        # them into this function
+        pg.turn_strobe_on(self.nodemap, 2, strobe_duration=0.0)
+
+    def loop(self):
+        if not self.started:
+            raise ValueError('Start must be called before loop!')
+        
+        try:
+            should_continue = True
+            while should_continue:
+                image_result = self.cam.GetNextImage()
+                if image_result.IsIncomplete():
+                    if self.verbose:
+                        print('Image incomplete with image status %d ...' 
+                            % image_result.GetImageStatus())
+                    continue
+                else:
+                    pass
+                image_converted = image_result.Convert(PySpin.PixelFormat_Mono8, 
+                    PySpin.HQ_LINEAR)
+                frame = image_converted.GetNDArray()
+                
+                frame = self.process(frame)
+                sestime = time.perf_counter() - self.start_t
+                cputime = time.time()
+                framecount =  image_result.GetFrameID()
+                # timestamp is nanoseconds from last time camera was powered off
+                timestamp = image_result.GetTimeStamp()*1e-9
+                
+                # print('standard process time: %.6f' %(time.perf_counter() - start_t))
+                # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
+                metadata = (framecount, timestamp, sestime, cputime)
+                if self.save:
+                    self.save_queue.put_nowait((frame, metadata))
+
+                # only output every 10th frame for speed
+                # might be unnecessary
+                if self.preview and framecount % 10 ==0:
+                    self.preview_queue.put_nowait((frame,framecount))
+                    if self.latest_frame is not None:
+                        cv2.imshow(self.name, self.latest_frame)
+                        key = cv2.waitKey(1)
+                        if key==27:
+                            break
+                frames = None
+            
+        except KeyboardInterrupt:
+            print('keyboard interrupt')
+            should_continue = False
+        finally:
+            # don't know why I can't put this in the destructor
+            # print(dir(device))
+            # if device.preview:
+            #     device.preview_queue.put(None)
+            #     device.preview_thread.join()
+            # time.sleep(1)
+            self.stop()
+
+    def initialize_metadata_saving_hdf5(self):
+        fname = os.path.join(self.directory, self.name + '_metadata.h5')
+        f = h5py.File(fname, 'w')
+        
+        dset = f.create_dataset('framecount',(0,),maxshape=(None,),dtype=np.int32)
+        dset = f.create_dataset('timestamp',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('sestime',(0,),maxshape=(None,),dtype=np.float64)
+        dset = f.create_dataset('cputime',(0,),maxshape=(None,),dtype=np.float64)
+
+        self.metadata_obj = f
+        
+    def write_metadata(self, framecount, timestamp,  sestime, cputime):
+        # t0 = time.perf_counter()
+        append_to_hdf5(self.metadata_obj,'framecount', framecount)
+        append_to_hdf5(self.metadata_obj,'timestamp', timestamp)
+        append_to_hdf5(self.metadata_obj,'sestime', sestime)
+        append_to_hdf5(self.metadata_obj, 'cputime', cputime)
+
+
+    def stop_streaming(self):
+        # print(dir(self.pipeline))
+        try:
+            self.cam.EndAcquisition()
+            del(self.nodemap)
+            self.cam.DeInit()
+            del(self.cam)
+            self.system.ReleaseInstance()
         except BaseException as e:
             if self.verbose:
                 print('Probably tried to call stop before a start.')
