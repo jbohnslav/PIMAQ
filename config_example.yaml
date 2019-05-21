@@ -1,0 +1,24 @@
+experimenter: 'Jim'
+savedir: /media/jim/FASTER/realsense
+cams:
+  left_ant: 
+    type: Realsense
+    master: False
+    serial: 817412071174
+  left_post:
+    type: Realsense
+    master: False
+    serial: 817412070989
+  right_ant:
+    type: Realsense
+    master: False
+    serial: 832112070808
+  right_post:
+    type: Realsense
+    master: True
+    serial: 830112071475
+  eye:
+    type: PointGrey
+    master: False
+    serial: 17278795
+
