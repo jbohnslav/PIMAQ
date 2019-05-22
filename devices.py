@@ -377,6 +377,7 @@ class Realsense(Device):
         # turn auto exposure off! Very important
         ir_sensors.set_option(rs.option.enable_auto_exposure,0)
 
+        assert(self.options['emitter_enabled']==0 or self.options['emitter_enabled']==1)
         ir_sensors.set_option(rs.option.emitter_enabled, self.options['emitter_enabled'])
         laser_pwr = ir_sensors.get_option(rs.option.laser_power)
         if self.verbose:
@@ -386,6 +387,8 @@ class Realsense(Device):
             print("laser power range = " , laser_range.min , "~", laser_range.max)
         assert(self.options['laser_power']<=laser_range.max and self.options['laser_power']>=laser_range.min)
         ir_sensors.set_option(rs.option.laser_power,self.options['laser_power'])
+
+        
         ir_sensors.set_option(rs.option.exposure, self.options['exposure'])
         gain_range = ir_sensors.get_option_range(rs.option.gain)
         if self.verbose:

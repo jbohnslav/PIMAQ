@@ -53,7 +53,7 @@ def initialize_and_loop(config, camname, cam, args, experiment, start_t):
     if cam['master']:
         device.start()
     else:
-        sleep_time = np.random.randn()*2+3
+        sleep_time = np.random.randn()+3
         time.sleep(sleep_time)
         device.start()
     # runs until keyboard interrupt!

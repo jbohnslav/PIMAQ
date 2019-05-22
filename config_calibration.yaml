@@ -9,22 +9,22 @@ realsense_options:
   height: 480
   framerate: 60
   emitter_enabled: 0
-  laser_power: 0 # meaningless since emitter is off, but code expects laser power setting
+  laser_power: 1 # meaningless since emitter is off, but code expects laser power setting
   exposure: 1200
   gain: 16
   uncompressed: True
 cams:
   left_ant: 
     type: Realsense
-    master: False
+    master: True
     serial: 817412071174
   left_post:
     type: Realsense
-    master: False
+    master: True
     serial: 817412070989
   right_ant:
     type: Realsense
-    master: False
+    master: True
     serial: 832112070808
   right_post:
     type: Realsense
