@@ -2,12 +2,12 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import h5py
 import os
-import argparse
-import multiprocessing as mp
-import yaml
+# import argparse
+# import multiprocessing as mp
+# import yaml
 import warnings
 # import queue
 from queue import LifoQueue, Queue, Empty
@@ -588,6 +588,7 @@ class PointGrey(Device):
                   'OffsetX': 0, # left value of ROI
                   'OffsetY': 0, # right value of ROI
                   'PixelFormat': 'Mono8',
+                  'AcquisitionFrameRateAuto': 'Off',
                   'AcquisitionFrameRate': 60.0,
                   'GainAuto': 'Off',
                   'Gain': 10.0,

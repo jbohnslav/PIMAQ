@@ -12,7 +12,7 @@ def set_value(nodemap, nodename, value):
 
         nodeval, typestring = get_nodeval_and_type(node)
 
-        assert(PySpin.IsWritable(nodeval))
+        assert(PySpin.IsWritable(nodeval), '%s is not writable!' %nodename)
 
         if typestring == 'int' or typestring == 'float':
             assert(value <= nodeval.GetMax() and value >= nodeval.GetMin())

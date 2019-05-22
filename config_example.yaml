@@ -51,6 +51,7 @@ cams:
       OffsetX: 0 # left value of ROI
       OffsetY: 0 # top value of ROI
       PixelFormat: Mono8
+      AcquisitionFrameRateAuto: 'Off'
       AcquisitionFrameRate: 60.0
       GainAuto: 'Off'
       Gain: 10.0
