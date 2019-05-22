@@ -1,5 +1,11 @@
-# panopticon
-Acquisition and processing for multiple realsense cameras for mouse behavior. 
+# PIMAQ
+## Python Image Acquisition 
+### A software package for simultaneous video acquisition from multiple cameras. 
+Motivation: Using multiple cameras for measuring animal behavior is very common. For single camera acquisition, the hardware manufacturer (e.g. PointGrey, Basler, etc) wrote their own software with GUIs for changing camera attributes and acquiring data simply. MATLAB Image Acquisition toolbox also has its own GUI for previewing and saving videos. However, these GUIs do not easily support multiple simultaneous camera acquisition. Furthermore, manufacturers often make `C++` or `Python` APIs for controlling the cameras, but in my experience they are poorly documented and hard to use. I wrote this package to make it simple and easy to acquire data from many cameras simultaneously.
+
+### Currently supported cameras
+* Intel Realsense (tested with D435)
+* FLIR (formerly Point Grey. Tested with Flea3, FL3-U3-13Y3M-c)
 
 # installing PySpin
 * Go to the Spinnaker downloads page at FLIR (formerly PointGrey) [here.](https://www.flir.com/products/spinnaker-sdk/)
