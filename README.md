@@ -20,10 +20,26 @@ Motivation: Using multiple cameras for measuring animal behavior is very common.
 
 # Installation
 ### Installing PIMAQ
+Dependencies:
+```
+numpy
+OpenCV
+h5py
+optional: ffmpeg (for libx264 encoded videos)
+optional: PySpin (for FLIR cameras)
+optional: pyrealsense2 (for realsense cameras)
+```
+Installation:
 ``` 
 git clone https://github.com/jbohnslav/panopticon.git
 ```
-# installing PySpin
+That's it! 
+
+### Installing pyrealsense2 to control realsense cameras
+For full installation instructions, [go to Intel's Github page](https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python#installation)
+Short version: `pip install pyrealsense2`
+
+### installing PySpin to control FLIR (formerly PointGrey) cameras
 * Go to the Spinnaker downloads page at FLIR (formerly PointGrey) [here.](https://www.flir.com/products/spinnaker-sdk/)
 * Click Download Now. Note: I had to disable AdBlock, etc. to get the website to show the download button.
 * Click your OS (e.g. Windows)
