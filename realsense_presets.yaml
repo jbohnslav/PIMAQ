@@ -1,0 +1,44 @@
+fast:
+  width: 480
+  height: 270
+  framerate: 90
+  emitter_enabled: 1
+  laser_power: 300
+  exposure: 650 # us
+  gain: 16
+  uncompressed: False
+  codec: 'MJPG' # DIVX has compression artifacts
+large:
+  width: 640
+  height: 480
+  framerate: 60
+  emitter_enabled: 1
+  laser_power: 200
+  exposure: 750
+  gain: 16
+  uncompressed: False
+  codec: 'MJPG' # DIVX has compression artifacts
+calib:
+  width: 640
+  height: 480
+  framerate: 60
+  emitter_enabled: 0
+  laser_power: 200 # meaningless since emitter is off, but code expects laser power setting
+  exposure: 1200
+  gain: 16
+  uncompressed: True
+  codec: 0 # 0 means uncompressed image files
+brighter: # not actually brighter?
+  width: 480
+  height: 270
+  framerate: 90
+  emitter_enabled: 1
+  laser_power: 200
+  exposure: 500
+  gain: 16
+  uncompressed: False
+  codec: 'MJPG'
+
+
+
+
