@@ -32,7 +32,7 @@ def initialize_and_loop(config, camname, cam, args, experiment, start_t):
         raise ValueError('Invalid camera type: %s' %cam['type'])
     # sync_mode = 'master' if serial == args.master else 'slave'
     if serial == args.master:
-        device.start(sync_mode='master')
+        device.start()
     else:
         time.sleep(3)
         device.start()
