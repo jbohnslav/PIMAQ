@@ -52,10 +52,10 @@ Short version: `pip install pyrealsense2`
 * Unzip this file
 * `cd` into this file location. There should be a file like `spinnaker_python-1.23.0.27-cp36-cp36m-win_amd64.whl`
 * activate your anaconda or pip environment!!!
-* run `python -m ensurepip` to ensure that pip is installed
-* run `python -m pip install --upgrade pip numpy`. This makes sure that `numpy` is installed
-* Finally, to install PySpin, run `python -m pip install spinnaker_python-1.x.x.x-cp36-cp36m-win_amd64.whl`, with of course the correct filename for your version.
-* To verify installation, make sure your point grey is connected and run `python Examples\Python3\Acquisition.py`.
+* `python -m ensurepip`: ensures that pip is installed
+* `python -m pip install --upgrade pip numpy`. This makes sure that `numpy` is installed
+* `python -m pip install spinnaker_python-1.x.x.x-cp36-cp36m-win_amd64.whl` to install PySpin, with of course the correct filename for your version.
+* `python Examples\Python3\Acquisition.py` Running this example will verify your installation, as long as you have a FLIR camera connected. 
 * Potential bugs
   * It's very important to run the `Acquistion.py` example to catch any potential bugs.
   * I encountered a strange bug relating to my `anaconda` numpy version. It said something about `MKL_DNN` or something.
