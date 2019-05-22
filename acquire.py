@@ -99,11 +99,12 @@ def main():
     tuples = []
     # make a name for this experiment
     experiment = '%s_%s' %(args.name, time.strftime('%y%m%d_%H%M%S', time.localtime()))
-    directory = os.path.join(config['savedir'], experiment)
-    if not os.path.isdir(directory):
-        os.makedirs(directory)
-        with open(os.path.join(directory, 'loaded_config_file.yaml'), 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    if args.save:
+        directory = os.path.join(config['savedir'], experiment)
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+            with open(os.path.join(directory, 'loaded_config_file.yaml'), 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     for camname, cam in config['cams'].items():
         tup = (config, camname, cam, args, experiment, start_t)
         tuples.append(tup)
