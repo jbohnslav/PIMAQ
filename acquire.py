@@ -13,18 +13,23 @@ import warnings
 from devices import Realsense
 import realsense_utils
 
-datadir = r'D:\DATA\JB\realsense'
-
-def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
+def initialize_and_loop(config, camname, cam, args, experiment, start_t):
 
     uncompressed = True if args.options=='calib' else False
-
-    
-    device = Realsense(serial, start_t,height=None, width=None, save=args.save,
-        savedir=datadir, experiment=experiment,
-        name=name,uncompressed=uncompressed,preview=args.preview,verbose=args.verbose, options=args.options,
-        movie_format=args.movie_format)
-
+    master = True if cam['master'] else False
+    serial = 
+    if cam['type'] == 'Realsense'
+        device = Realsense(cam['serial'], start_t,height=None, width=None, save=args.save,
+            savedir=config['savedir'], experiment=experiment,
+            name=cam,uncompressed=uncompressed,preview=args.preview,verbose=args.verbose, options=args.options,
+            movie_format=args.movie_format)
+    elif cam['type'] == 'PointGrey':
+        device = PointGrey(serial, start_t, height=512,width=640, save=True, savedir=config['savedir'],
+            movie_format=rgs.movie_format, metadata_format='hdf5', uncompressed=False, preview=args.preview,
+            verbose=args.verbose, options=cam['options'], name='eye', experiment='testing_pointgrey', 
+            strobe=cam['strobe'])
+    else:
+        raise ValueError('Invalid camera type: %s' %cam['type'])
     # sync_mode = 'master' if serial == args.master else 'slave'
     if serial == args.master:
         device.start(sync_mode='master')
@@ -36,16 +41,16 @@ def initialize_and_loop(serial,args,datadir, experiment, name,start_t):
 
 def main():
     parser = argparse.ArgumentParser(description='Acquire from multiple RealSenses.')
-    parser.add_argument('-m','--mouse', type=str, default='JB999',
-        help='ID of mouse for file naming.')
+    parser.add_argument('-n','--name', type=str, default='JB999',
+        help='Base name for directories. Example: mouse ID')
+    parser.add_argument('-c', '--config', type=str, default='config.yaml', 
+        help='Configuration for acquisition. Defines number of cameras, serial numbers, etc.')
     parser.add_argument('-p', '--preview', default=False, action='store_true',
         help='Show preview in opencv window')
     parser.add_argument('-s', '--save', default=False, action='store_true',
         help='Delete local dirs or not. 0=don''t delete')
     parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
-    parser.add_argument('--master', default='830112071475',type=str,
-        help='Which camera serial number is the "master" camera.')
     parser.add_argument('-o','--options', default='large',
         choices=['default','large', 'calib', 'brighter'], type=str,
         help='Which camera serial number is the "master" camera.')
@@ -61,15 +66,13 @@ def main():
     serials = realsense_utils.enumerate_connected_devices()
     if args.verbose:
         print('Serials: ', serials)
-    assert(args.master in serials)
-    if os.path.isfile('serials.yaml'):
-        with open('serials.yaml') as f:
-            serial_dict = yaml.load(f, Loader=yaml.SafeLoader)
+
+    if os.path.isfile(args.config):
+        with open(args.config) as f:
+            config = yaml.load(f, Loader=yaml.SafeLoader)
     else:
-        warnings.Warn('Need to create a lookup table for matching serial numbers with names.')
-        serial_dict = {}
-        for serial in serials:
-            serial_dict[serial] = None
+        raise ValueError('Invalid config file: %s' %args.config)
+    
     """
     Originally I wanted to initialize each device, then pass each device to "run_loop" 
     in its own process. However, pyrealsense2 config objects and pyrealsense2 pipeline objects
@@ -79,10 +82,14 @@ def main():
     start_t = time.perf_counter()
     tuples = []
     # make a name for this experiment
-    experiment = '%s_%s' %(args.mouse, time.strftime('%y%m%d_%H%M%S', time.localtime()))
-    for serial in serials:
-
-        tup = (serial, args, datadir, experiment, serial_dict[serial],start_t)
+    experiment = '%s_%s' %(args.name, time.strftime('%y%m%d_%H%M%S', time.localtime()))
+    directory = os.path.join(config['savedir'], experiment)
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+        with open(os.path.join(directory, 'loaded_config_file.yaml')) as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    for camname, cam in config['cams'].items():
+        tup = (config, camname, cam, args, experiment, start_t)
         tuples.append(tup)
     if args.verbose:
         print('Tuples created, starting...')

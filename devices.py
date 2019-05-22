@@ -545,7 +545,8 @@ class Realsense(Device):
 class PointGrey(Device):
     def __init__(self,serial,
                  start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
-        movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None):
+        movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None,
+        strobe=None):
         # use these options to override input width and height
         # Retrieve singleton reference to system object
         system = PySpin.System.GetInstance()
@@ -582,8 +583,36 @@ class PointGrey(Device):
         self.serial = serial
         # self.cam = cam
         self.system = system
-        self.options = options
         self.verbose=verbose
+
+        if options is None:
+            # Note: modify these at your own risk! Don't change the order!
+            # many have dependencies that are hard to figure out, so the order matters.
+            # For example, ExposureAuto must be set to Off before ExposureTime can be changed. 
+            options = {
+                  'AcquisitionMode': 'Continuous', # can capture one frame or multiple frames as well
+                  'ExposureAuto': 'Off', # manually set exposure
+                  'ExposureTime': 1000.0, # in microseconds, so 1000 = 1ms
+                  # this downsamples image in half, enabling faster framerates
+                  # it's not possible to change BinningHorizontal, but it is automatically changed by changing
+                  # BinningVertical
+                  'BinningVertical': 2, 
+                  'Height': 512, # max 1024 if Binning=1, else 512
+                  'Width': 640, # max 1280 if Binning=1, else 640
+                  'OffsetX': 0, # left value of ROI
+                  'OffsetY': 0, # right value of ROI
+                  'PixelFormat': 'Mono8',
+                  'AcquisitionFrameRate': 60.0,
+                  'GainAuto': 'Off',
+                  'Gain': 10.0,
+                  'SharpnessAuto': 'Off'}
+        if strobe is None:
+            strobe = {
+            'line': 2,
+            'duration': 0.0
+            }
+        self.options = options
+        self.strobe = strobe
 
     def process(self, frame):
         # t0 = time.perf_counter()
@@ -609,28 +638,11 @@ class PointGrey(Device):
         These are extraordinarily tricky! Order matters! For exampple, ExposureAuto must be set
         to Off before ExposureTime can be set. 
         """
-        pg.set_value(self.nodemap, 'AcquisitionMode', 'Continuous')
-        pg.set_value(self.nodemap, 'ExposureAuto', 'Off')
-        # note, can't change horizontal, but changing vertical
-        # changes horizontal automatically
-        pg.set_value(self.nodemap, 'BinningVertical', 2)
-
-        pg.set_value(self.nodemap, 'Height', 512)
-        pg.set_value(self.nodemap, 'Width', 640)
-        pg.set_value(self.nodemap, 'OffsetX', 0)
-        pg.set_value(self.nodemap, 'OffsetY', 0)
-        pg.set_value(self.nodemap, 'PixelFormat', 'Mono8')
-        pg.set_value(self.nodemap, 'AcquisitionFrameRate', 60.0)
-
-        pg.set_value(self.nodemap, 'ExposureTime', 1*1000.0) #  in us
-        pg.set_value(self.nodemap, 'GainAuto', 'Off') 
-        pg.set_value(self.nodemap, 'Gain', 10.0)
-
-        pg.set_value(self.nodemap, 'SharpnessAuto', 'Off') 
-
+        for key, value in self.options:
+            pg.set_value(self.nodemap, key, value)
         # changing strobe involves multiple variables in the correct order, so I've bundled
         # them into this function
-        pg.turn_strobe_on(self.nodemap, 2, strobe_duration=0.0)
+        pg.turn_strobe_on(self.nodemap, self.strobe['line'], strobe_duration=self.strobe['duration'])
 
     def loop(self):
         if not self.started:
