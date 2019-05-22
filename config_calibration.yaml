@@ -1,0 +1,63 @@
+experimenter: 'Jim'
+savedir: /media/jim/FASTER/realsense
+# the reason that we have to set these here is that all realsense cameras should be 
+# the same fps and h,w for synchronization + calibration purpose
+# look in realsense_presets.yaml for good examples
+realsense_options:
+  width: 640
+  height: 480
+  framerate: 60
+  emitter_enabled: 0
+  laser_power: 200 # meaningless since emitter is off, but code expects laser power setting
+  exposure: 1200
+  gain: 16
+  uncompressed: True
+  codec: 0 # 0 means uncompressed image files
+cams:
+  left_ant: 
+    type: Realsense
+    master: False
+    serial: 817412071174
+  left_post:
+    type: Realsense
+    master: False
+    serial: 817412070989
+  right_ant:
+    type: Realsense
+    master: False
+    serial: 832112070808
+  right_post:
+    type: Realsense
+    master: True
+    serial: 830112071475
+  # eye:
+  #   type: PointGrey
+  #   master: False
+  #   serial: 17278795
+  #   # set options to None to use default
+  #   options:
+  #     # Note: modify these at your own risk! Don't change the order!
+  #     # many have dependencies that are hard to figure out, so the order matters.
+  #     # For example, ExposureAuto must be set to Off before ExposureTime can be changed. 
+  #     AcquisitionMode: Continuous # can capture one frame or multiple frames as well
+  #     ExposureAuto: 'Off' # manually set exposure
+  #     ExposureTime: 1000.0 # in microseconds, so 1000 = 1ms
+  #     # this downsamples image in half, enabling faster framerates
+  #     # it's not possible to change BinningHorizontal, but it is automatically changed by changing
+  #     # BinningVertical
+  #     BinningVertical: 2 
+  #     Height: 512 # max 1024 if Binning=1, else 512
+  #     Width: 640 # max 1280 if Binning=1, else 640
+  #     OffsetX: 0 # left value of ROI
+  #     OffsetY: 0 # top value of ROI
+  #     PixelFormat: Mono8
+  #     AcquisitionFrameRate: 60.0
+  #     GainAuto: 'Off'
+  #     Gain: 10.0
+  #     SharpnessAuto: 'Off'
+  #   strobe:
+  #     line: 2
+  #     duration: 0.0
+
+
+

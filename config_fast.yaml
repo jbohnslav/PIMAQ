@@ -4,15 +4,15 @@ savedir: /media/jim/FASTER/realsense
 # the same fps and h,w for synchronization + calibration purpose
 # look in realsense_presets.yaml for good examples
 realsense_options:
-  width: 640
-  height: 480
-  framerate: 60
-  emitter_enabled: 1 # must be 1 or 0, not true / false
-  laser_power: 200
-  exposure: 750
+  width: 480
+  height: 270
+  framerate: 90
+  emitter_enabled: 1
+  laser_power: 300
+  exposure: 650 # us
   gain: 16
   uncompressed: False
-  codec: 'MJPG' # DIVX has compression artifacts. set to 0 for uncompressed
+  codec: 'MJPG' # DIVX has compression artifacts
 cams:
   left_ant: 
     type: Realsense

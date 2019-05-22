@@ -15,23 +15,40 @@ import realsense_utils
 
 def initialize_and_loop(config, camname, cam, args, experiment, start_t):
 
-    uncompressed = True if args.options=='calib' else False
-    master = True if cam['master'] else False
-    serial = 
     if cam['type'] == 'Realsense'
-        device = Realsense(cam['serial'], start_t,height=None, width=None, save=args.save,
-            savedir=config['savedir'], experiment=experiment,
-            name=cam,uncompressed=uncompressed,preview=args.preview,verbose=args.verbose, options=args.options,
-            movie_format=args.movie_format)
+        device = Realsense(serial=cam['serial'], 
+            start_t=start_t,
+            options=config['realsense_options'],
+            save=args.save,
+            savedir=config['savedir'], 
+            experiment=experiment,
+            name=cam,
+            movie_format=args.movie_format,
+            metadata_format='hdf5', 
+            uncompressed=config['realsense_options']['uncompressed'],
+            preview=args.preview,
+            verbose=args.verbose,
+            master=cam['master']
+            )
     elif cam['type'] == 'PointGrey':
-        device = PointGrey(serial, start_t, height=512,width=640, save=True, savedir=config['savedir'],
-            movie_format=rgs.movie_format, metadata_format='hdf5', uncompressed=False, preview=args.preview,
-            verbose=args.verbose, options=cam['options'], name='eye', experiment='testing_pointgrey', 
-            strobe=cam['strobe'])
+        device = PointGrey(serial=cam['serial'], 
+            start_t=start_t, 
+            options=cam['options'],
+            save=args.save, 
+            savedir=config['savedir'],
+            experiment=experiment,
+            name=cam,
+            movie_format=args.movie_format, 
+            metadata_format='hdf5', 
+            uncompressed=False, # setting to False always because you don't need to calibrate it
+            preview=args.preview,
+            verbose=args.verbose,
+            strobe=cam['strobe']
+            )
     else:
         raise ValueError('Invalid camera type: %s' %cam['type'])
     # sync_mode = 'master' if serial == args.master else 'slave'
-    if serial == args.master:
+    if cam['master']:
         device.start()
     else:
         time.sleep(3)
@@ -51,9 +68,6 @@ def main():
         help='Delete local dirs or not. 0=don''t delete')
     parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
-    parser.add_argument('-o','--options', default='large',
-        choices=['default','large', 'calib', 'brighter'], type=str,
-        help='Which camera serial number is the "master" camera.')
     parser.add_argument('--movie_format', default='opencv',
         choices=['hdf5','opencv', 'ffmpeg'], type=str,
         help='Method to save files to movies. Dramatically affects performance and filesize')

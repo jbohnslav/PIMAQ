@@ -93,7 +93,7 @@ class Device:
     def __init__(self, start_t=None,height=None,width=None,save=False,savedir=None,
                 experiment=None, name=None,
                 movie_format='hdf5',metadata_format='hdf5', uncompressed=False,
-                preview=False,verbose=False):
+                preview=False,verbose=False, codec='MJPG'):
         # print('Initializing %s' %name)
         # self.config = config
         # self.serial = serial
@@ -109,6 +109,7 @@ class Device:
         self.started = False
         self.height = height
         self.width = width
+        self.codec = codec
         # self.master = master
 
         assert(movie_format in ['hdf5', 'opencv', 'ffmpeg'])
@@ -300,37 +301,34 @@ class Device:
 
 class Realsense(Device):
     def __init__(self,serial,
-                 start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
+                 start_t=None,options=None,save=False,savedir=None,experiment=None, name=None,
         movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None, 
         master=False):
         # use these options to override input width and height
         config = rs.config()
-        if options=='default' or options=='brighter':
-            width = 480
-            height = 270
-            framerate = 90
-        elif options=='large':
-            width = 640
-            height = 480
-            framerate=60
-        elif options=='calib':
-            width=640
-            height=480
-            framerate=60
-        elif options is None:
-            pass
-        else:
-            raise NotImplementedError
-        # now that we have width and height, call the constructor for the superclass!
+        if options is None:
+            # use these defaults
+            options = {}
+            options['height'] = 480
+            options['width'] = 640
+            options['framerate'] = 60
+            options['emitter_enabled'] = 1
+            options['laser_power'] = 200
+            options['exposure'] = 750
+            options['gain'] = 16
+            options['uncompressed'] = False
+            options['codec'] = 'MJPG'
+        # call the constructor for the superclass!
         # we'll inherit all attributes and methods from the Device class
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
-        super().__init__(start_t,height, width*2, save, savedir, experiment, name, 
-                        movie_format, metadata_format, uncompressed,preview, verbose)
+        super().__init__(start_t,options['height'], options['width']*2, save, savedir, experiment, name, 
+                        movie_format, metadata_format, uncompressed,preview, verbose,options['codec'])
 
-
-        config.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, framerate)
-        config.enable_stream(rs.stream.infrared, 2, width, height, rs.format.y8, framerate)
+        config.enable_stream(rs.stream.infrared, 1, options['width'], options['height'], 
+            rs.format.y8, options['framerate'])
+        config.enable_stream(rs.stream.infrared, 2, options['width'], options['height'], 
+            rs.format.y8, options['framerate'])
 
         self.serial = serial
         self.config = config
@@ -372,49 +370,35 @@ class Realsense(Device):
         # sensor = self.prof.get_device().first_depth_sensor()
         # print(dir(sensor))
         # sensor.set_option(rs.option.emitter_enabled,1)
+        
+        
+        this_device = self.prof.get_device()
+        ir_sensors = this_device.query_sensors()[0] # 1 for RGB
+        # turn auto exposure off! Very important
+        ir_sensors.set_option(rs.option.enable_auto_exposure,0)
+
+        ir_sensors.set_option(rs.option.emitter_enabled, self.options['emitter_enabled'])
+        laser_pwr = ir_sensors.get_option(rs.option.laser_power)
+        if self.verbose:
+            print("laser power = ", laser_pwr)
+        laser_range = ir_sensors.get_option_range(rs.option.laser_power)
+        if self.verbose:
+            print("laser power range = " , laser_range.min , "~", laser_range.max)
+        assert(self.options['laser_power']<=laser_range.max and self.options['laser_power']>=laser_range.min)
+        ir_sensors.set_option(rs.option.laser_power,self.options['laser_power'])
+        ir_sensors.set_option(rs.option.exposure, self.options['exposure'])
+        gain_range = ir_sensors.get_option_range(rs.option.gain)
+        if self.verbose:
+            print("gain range = " , gain_range.min , "~", gain_range.max)
+        assert(self.options['gain']<=gain_range.max and self.options['gain']>=gain_range.min)
+        ir_sensors.set_option(rs.option.gain,self.options['gain'])
+
         if self.master:
             mode = 1
         else:
             mode = 2
         if self.verbose:
             print('%s: %s,%d' %(self.name, sync_mode, mode))
-        
-        this_device = self.prof.get_device()
-        ir_sensors = this_device.query_sensors()[0] # 1 for RGB
-        ir_sensors.set_option(rs.option.enable_auto_exposure,0)
-
-        if self.options=='default' or self.options=='large':
-            ir_sensors.set_option(rs.option.emitter_enabled,1)
-            
-            laser_pwr = ir_sensors.get_option(rs.option.laser_power)
-            if self.verbose:
-                print("laser power = ", laser_pwr)
-            laser_range = ir_sensors.get_option_range(rs.option.laser_power)
-            if self.verbose:
-                print("laser power range = " , laser_range.min , "~", laser_range.max)
-            ir_sensors.set_option(rs.option.laser_power,300)
-            
-            ir_sensors.set_option(rs.option.exposure,650)
-            ir_sensors.set_option(rs.option.gain,16)
-
-        elif self.options =='calib':
-            ir_sensors.set_option(rs.option.emitter_enabled,0)
-            # ir_sensors.set_option(rs.option.enable_auto_exposure,0)
-            ir_sensors.set_option(rs.option.exposure,1200)
-            ir_sensors.set_option(rs.option.gain,16)
-            self.jpg_quality = 99
-
-        if self.options=='large':
-            ir_sensors.set_option(rs.option.exposure,750)
-            ir_sensors.set_option(rs.option.laser_power,200)
-            ir_sensors.set_option(rs.option.gain,16)
-
-        if self.options=='brighter':
-            gain_range = ir_sensors.get_option_range(rs.option.gain)
-            if self.verbose:
-                print("gain range = " , gain_range.min , "~", gain_range.max)
-            ir_sensors.set_option(rs.option.exposure, 500)
-            ir_sensors.set_option(rs.option.gain,16)
         # set this to 2 for slave mode, 1 for master!
         ir_sensors.set_option(rs.option.inter_cam_sync_mode, mode)
         # print('sync mode ', ir_sensors.get_option(rs.option.inter_cam_sync_mode))
@@ -544,20 +528,19 @@ class Realsense(Device):
 
 class PointGrey(Device):
     def __init__(self,serial,
-                 start_t=None,height=None,width=None,save=False,savedir=None,experiment=None, name=None,
-        movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None,
+                 start_t=None,options=None,save=False,savedir=None,experiment=None, name=None,
+        movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,
         strobe=None):
         # use these options to override input width and height
         # Retrieve singleton reference to system object
         system = PySpin.System.GetInstance()
-
 
         # now that we have width and height, call the constructor for the superclass!
         # we'll inherit all attributes and methods from the Device class
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
         super().__init__(start_t,height, width, save, savedir, experiment, name, 
-                        movie_format, metadata_format, uncompressed,preview, verbose)
+                        movie_format, metadata_format, uncompressed,preview, verbose,options['codec'])
 
         version = system.GetLibraryVersion()
         if verbose:
