@@ -10,25 +10,26 @@ import multiprocessing as mp
 import yaml
 import warnings
 # import queue
-from devices import Realsense
+from devices import Realsense, PointGrey
 import realsense_utils
 
 def initialize_and_loop(config, camname, cam, args, experiment, start_t):
 
-    if cam['type'] == 'Realsense'
+    if cam['type'] == 'Realsense':
         device = Realsense(serial=cam['serial'], 
             start_t=start_t,
             options=config['realsense_options'],
             save=args.save,
             savedir=config['savedir'], 
             experiment=experiment,
-            name=cam,
+            name=camname,
             movie_format=args.movie_format,
             metadata_format='hdf5', 
             uncompressed=config['realsense_options']['uncompressed'],
             preview=args.preview,
             verbose=args.verbose,
-            master=cam['master']
+            master=cam['master'],
+            codec=config['codec']
             )
     elif cam['type'] == 'PointGrey':
         device = PointGrey(serial=cam['serial'], 
@@ -37,13 +38,14 @@ def initialize_and_loop(config, camname, cam, args, experiment, start_t):
             save=args.save, 
             savedir=config['savedir'],
             experiment=experiment,
-            name=cam,
+            name=camname,
             movie_format=args.movie_format, 
             metadata_format='hdf5', 
             uncompressed=False, # setting to False always because you don't need to calibrate it
             preview=args.preview,
             verbose=args.verbose,
-            strobe=cam['strobe']
+            strobe=cam['strobe'],
+            codec=config['codec']
             )
     else:
         raise ValueError('Invalid camera type: %s' %cam['type'])
@@ -79,7 +81,7 @@ def main():
             '60 Hz, 640x480 fills RAM in 5 minutes. Consider opencv')
     serials = realsense_utils.enumerate_connected_devices()
     if args.verbose:
-        print('Serials: ', serials)
+        print('Realsense Serials: ', serials)
 
     if os.path.isfile(args.config):
         with open(args.config) as f:
@@ -100,7 +102,7 @@ def main():
     directory = os.path.join(config['savedir'], experiment)
     if not os.path.isdir(directory):
         os.makedirs(directory)
-        with open(os.path.join(directory, 'loaded_config_file.yaml')) as f:
+        with open(os.path.join(directory, 'loaded_config_file.yaml'), 'w') as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     for camname, cam in config['cams'].items():
         tup = (config, camname, cam, args, experiment, start_t)
@@ -108,7 +110,7 @@ def main():
     if args.verbose:
         print('Tuples created, starting...')
 
-    with mp.Pool(len(serials)) as p:
+    with mp.Pool(len(config['cams'])) as p:
         try:
             p.starmap(initialize_and_loop, tuples)  
         except KeyboardInterrupt:

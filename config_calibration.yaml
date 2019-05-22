@@ -1,5 +1,6 @@
 experimenter: 'Jim'
-savedir: /media/jim/FASTER/realsense
+savedir: D:\DATA\JB\realsense
+codec: 0 # 0 means uncompressed image files
 # the reason that we have to set these here is that all realsense cameras should be 
 # the same fps and h,w for synchronization + calibration purpose
 # look in realsense_presets.yaml for good examples
@@ -8,11 +9,10 @@ realsense_options:
   height: 480
   framerate: 60
   emitter_enabled: 0
-  laser_power: 200 # meaningless since emitter is off, but code expects laser power setting
+  laser_power: 0 # meaningless since emitter is off, but code expects laser power setting
   exposure: 1200
   gain: 16
   uncompressed: True
-  codec: 0 # 0 means uncompressed image files
 cams:
   left_ant: 
     type: Realsense

@@ -210,8 +210,8 @@ class Device:
                 print(e)
             finally:
                 queue.task_done()
-        
-        print('out of save queue')
+        if self.verbose:
+            print('out of save queue')
         
     def initialize_saving(self):
         assert(self.savedir is not None and self.experiment is not None)
@@ -261,7 +261,8 @@ class Device:
         if self.save:
             print('Waiting for saving thread to finish on cam %s. DO NOT INTERRUPT' %self.name)
             self.save_queue.put(None)
-            print('joining...')
+            if self.verbose:
+                print('joining...')
             self.save_queue.join()
             print('joined')
         if self.preview:
@@ -302,8 +303,8 @@ class Device:
 class Realsense(Device):
     def __init__(self,serial,
                  start_t=None,options=None,save=False,savedir=None,experiment=None, name=None,
-        movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,options=None, 
-        master=False):
+        movie_format='hdf5',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,
+        master=False,codec='MJPG'):
         # use these options to override input width and height
         config = rs.config()
         if options is None:
@@ -317,23 +318,23 @@ class Realsense(Device):
             options['exposure'] = 750
             options['gain'] = 16
             options['uncompressed'] = False
-            options['codec'] = 'MJPG'
         # call the constructor for the superclass!
         # we'll inherit all attributes and methods from the Device class
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
         super().__init__(start_t,options['height'], options['width']*2, save, savedir, experiment, name, 
-                        movie_format, metadata_format, uncompressed,preview, verbose,options['codec'])
+                        movie_format, metadata_format, uncompressed,preview, verbose,codec)
 
         config.enable_stream(rs.stream.infrared, 1, options['width'], options['height'], 
             rs.format.y8, options['framerate'])
         config.enable_stream(rs.stream.infrared, 2, options['width'], options['height'], 
             rs.format.y8, options['framerate'])
 
-        self.serial = serial
+        self.serial = str(serial)
         self.config = config
         self.master = master
         self.options = options
+        self.verbose = verbose
         
     def process(self, left, right):
         # t0 = time.perf_counter()
@@ -361,7 +362,8 @@ class Realsense(Device):
         self.update_settings()
         if self.save:
             self.initialize_saving()
-            print('saving initialized: %s' %self.name)
+            if self.verbose:
+                print('saving initialized: %s' %self.name)
         if self.preview:
             self.initialize_preview()
         self.started= True
@@ -370,8 +372,6 @@ class Realsense(Device):
         # sensor = self.prof.get_device().first_depth_sensor()
         # print(dir(sensor))
         # sensor.set_option(rs.option.emitter_enabled,1)
-        
-        
         this_device = self.prof.get_device()
         ir_sensors = this_device.query_sensors()[0] # 1 for RGB
         # turn auto exposure off! Very important
@@ -398,7 +398,7 @@ class Realsense(Device):
         else:
             mode = 2
         if self.verbose:
-            print('%s: %s,%d' %(self.name, sync_mode, mode))
+            print('%s: %s,%d' %(self.name, 'master' if self.master else 'slave', mode))
         # set this to 2 for slave mode, 1 for master!
         ir_sensors.set_option(rs.option.inter_cam_sync_mode, mode)
         # print('sync mode ', ir_sensors.get_option(rs.option.inter_cam_sync_mode))
@@ -530,7 +530,9 @@ class PointGrey(Device):
     def __init__(self,serial,
                  start_t=None,options=None,save=False,savedir=None,experiment=None, name=None,
         movie_format='opencv',metadata_format='hdf5', uncompressed=False,preview=False,verbose=False,
-        strobe=None):
+        strobe=None,codec='MJPG'):
+
+        self.verbose=verbose
         # use these options to override input width and height
         # Retrieve singleton reference to system object
         system = PySpin.System.GetInstance()
@@ -539,11 +541,12 @@ class PointGrey(Device):
         # we'll inherit all attributes and methods from the Device class
         # have to double the width in this constructor because we're gonna save the left 
         # and right images concatenated horizontally
-        super().__init__(start_t,height, width, save, savedir, experiment, name, 
-                        movie_format, metadata_format, uncompressed,preview, verbose,options['codec'])
+        super().__init__(start_t,options['Height'], options['Width'], save, savedir, experiment, name, 
+                        movie_format, metadata_format, uncompressed,preview, verbose,codec)
 
         version = system.GetLibraryVersion()
-        if verbose:
+        
+        if self.verbose:
             print('Library version: %d.%d.%d.%d' % (version.major, version.minor, version.type, version.build))
 
         # Retrieve list of cameras from the system
@@ -566,7 +569,7 @@ class PointGrey(Device):
         self.serial = serial
         # self.cam = cam
         self.system = system
-        self.verbose=verbose
+        
 
         if options is None:
             # Note: modify these at your own risk! Don't change the order!
@@ -621,7 +624,7 @@ class PointGrey(Device):
         These are extraordinarily tricky! Order matters! For exampple, ExposureAuto must be set
         to Off before ExposureTime can be set. 
         """
-        for key, value in self.options:
+        for key, value in self.options.items():
             pg.set_value(self.nodemap, key, value)
         # changing strobe involves multiple variables in the correct order, so I've bundled
         # them into this function

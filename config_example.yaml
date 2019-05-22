@@ -1,5 +1,6 @@
 experimenter: 'Jim'
 savedir: /media/jim/FASTER/realsense
+codec: 'MJPG' # DIVX has compression artifacts. set to 0 for uncompressed
 # the reason that we have to set these here is that all realsense cameras should be 
 # the same fps and h,w for synchronization + calibration purpose
 # look in realsense_presets.yaml for good examples
@@ -12,7 +13,6 @@ realsense_options:
   exposure: 750
   gain: 16
   uncompressed: False
-  codec: 'MJPG' # DIVX has compression artifacts. set to 0 for uncompressed
 cams:
   left_ant: 
     type: Realsense
