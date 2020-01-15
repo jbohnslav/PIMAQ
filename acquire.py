@@ -1,4 +1,8 @@
-import pyrealsense2 as rs
+try:
+    import pyrealsense2 as rs
+except ImportError as e:
+    print('pyrealsense not found, cannot acquire realsense cameras...')
+    rs = None
 import numpy as np
 import cv2
 import time
@@ -10,7 +14,13 @@ import multiprocessing as mp
 import yaml
 import warnings
 # import queue
-from devices import Realsense, PointGrey
+if rs is not None:
+    from devices import Realsense 
+try:
+    from devices import PointGrey
+except ImportError as e:
+    print('PySpin not found, can''t acquire from FLIR cameras')
+    PointGrey = None
 import realsense_utils
 
 def initialize_and_loop(config, camname, cam, args, experiment, start_t):
@@ -60,7 +70,7 @@ def initialize_and_loop(config, camname, cam, args, experiment, start_t):
     device.loop()
 
 def main():
-    parser = argparse.ArgumentParser(description='Acquire from multiple RealSenses.')
+    parser = argparse.ArgumentParser(description='Multi-camera acquisition in Python.')
     parser.add_argument('-n','--name', type=str, default='JB999',
         help='Base name for directories. Example: mouse ID')
     parser.add_argument('-c', '--config', type=str, default='config.yaml', 
@@ -68,7 +78,7 @@ def main():
     parser.add_argument('-p', '--preview', default=False, action='store_true',
         help='Show preview in opencv window')
     parser.add_argument('-s', '--save', default=False, action='store_true',
-        help='Delete local dirs or not. 0=don''t delete')
+        help='Use this flag to save to disk. If not passed, will only view')
     parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
     parser.add_argument('--movie_format', default='opencv',
@@ -80,9 +90,10 @@ def main():
     if args.movie_format == 'ffmpeg':
         warnings.Warn('ffmpeg uses lots of CPU resources. ' + 
             '60 Hz, 640x480 fills RAM in 5 minutes. Consider opencv')
-    serials = realsense_utils.enumerate_connected_devices()
-    if args.verbose:
-        print('Realsense Serials: ', serials)
+    if rs is not None:
+        serials = realsense_utils.enumerate_connected_devices()
+        if args.verbose:
+            print('Realsense Serials: ', serials)
 
     if os.path.isfile(args.config):
         with open(args.config) as f:

@@ -1,4 +1,8 @@
-import pyrealsense2 as rs
+try:
+    import pyrealsense2 as rs
+except ImportError as e:
+    print('pyrealsense not found, cannot acquire realsense cameras...')
+    rs = None
 import numpy as np
 import cv2
 import time
@@ -10,84 +14,16 @@ import os
 # import yaml
 import warnings
 # import queue
-from queue import LifoQueue, Queue, Empty
-from threading import Thread
+from utils import VideoWriter
 import subprocess as sp
-import PySpin
-import pointgrey_utils as pg
+try:
+    import PySpin
+except ImportError as e:
+    print('PySpin not found, can''t acquire from FLIR cameras')
+    PySpin = None
+if PySpin is not None:
+    import pointgrey_utils as pg
 
-def initialize_hdf5(filename, framesize=None, codec=None):
-    filename = filename + '.h5'
-    f = h5py.File(filename, 'w')
-    datatype = h5py.special_dtype(vlen=np.dtype('uint8'))
-    dset = f.create_dataset('frame', (0,), maxshape=(None,),dtype=datatype)
-    # dset = f.create_dataset('right', (0,), maxshape=(None,),dtype=datatype)
-    return(f)
-
-def write_frame_hdf5(writer_obj, frame, axis=0):
-    # ret1, left_jpg = cv2.imencode('.jpg', left, (cv2.IMWRITE_JPEG_QUALITY,80))
-    # ret2, right_jpg = cv2.imencode('.jpg', right, (cv2.IMWRITE_JPEG_QUALITY,80))
-    ret, jpg = cv2.imencode('.jpg', frame, (cv2.IMWRITE_JPEG_QUALITY,80))
-    writer_obj['frame'].resize(writer_obj['frame'].shape[axis]+1, axis=axis)
-    # f['left'].resize(f['left'].shape[axis]+1, axis=axis)
-    writer_obj['frame'][-1]=jpg.squeeze()
-     
-def initialize_opencv(filename, framesize, codec):
-    if codec == 0:
-        filename = filename + '_%06d.bmp'
-        fourcc = 0
-        fps=0
-    else:
-        filename = filename + '.avi'
-        fourcc = cv2.VideoWriter_fourcc(*codec)
-        fps=30
-    # fourcc = -1
-    writer = cv2.VideoWriter(filename,fourcc, fps, framesize)
-    return(writer)
-
-def write_frame_opencv(writer_obj, frame):
-    # out = cv2.cvtColor(np.hstack((left, right)), cv2.COLOR_GRAY2RGB)
-    # t0 = time.perf_counter()
-    writer_obj.write(frame)
-    # print('image writing t: %.6f' %( (time.perf_counter() - t0)*1000 ))
-    
-def initialize_ffmpeg(filename,framesize, codec=None):
-    filename = filename + '.avi'
-    size_string = '%dx%d' %framesize
-    # outname = os.path.join(outdir, fname)
-    command = [ 'ffmpeg',
-        '-threads', '1',
-        '-y', # (optional) overwrite output file if it exists
-        '-f', 'rawvideo',
-        '-vcodec','rawvideo',
-        '-s', size_string, # size of one frame
-        '-pix_fmt', 'rgb24',
-        '-r', '30', # frames per second
-        '-i', '-', # The imput comes from a pipe
-        '-an', # Tells FFMPEG not to expect any audio
-        '-vcodec', 'libx264',
-        '-crf', '23', 
-        filename]
-    # if you want to print to the command line, change stderr to sp.STDOUT
-    pipe = sp.Popen( command, stdin=sp.PIPE, stderr=sp.DEVNULL)
-    return(pipe)
-# from here 
-# https://zulko.github.io/blog/2013/09/27/read-and-write-video-frames-in-python-using-ffmpeg/
-def write_frame_ffmpeg(pipe, frame):
-    # out = cv2.cvtColor(np.hstack((left,right)), cv2.COLOR_GRAY2RGB)
-    # t0 = time.perf_counter()
-    try:
-        pipe.stdin.write(frame.tobytes())
-    except BaseException as err:
-        _, ffmpeg_error = pipe.communicate()
-        error = (str(err) + ("\n\nerror: FFMPEG encountered "
-                             "the following error while writing file:"
-                             "\n\n %s" % (str(ffmpeg_error))))
-    # print('image writing t: %.6f' %( (time.perf_counter() - t0)*1000 ))
-        
-def append_to_hdf5(f, name, value, axis=0):
-    f[name].resize(f[name].shape[axis]+1, axis=axis)
-    f[name][-1]=value
 
 class Device:
     def __init__(self, start_t=None,height=None,width=None,save=False,savedir=None,
