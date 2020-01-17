@@ -82,7 +82,7 @@ def main():
     parser.add_argument('-v', '--verbose', default=False,action='store_true',
         help='Use this flag to print debugging commands.')
     parser.add_argument('--movie_format', default='opencv',
-        choices=['hdf5','opencv', 'ffmpeg'], type=str,
+        choices=['hdf5','opencv', 'ffmpeg', 'directory'], type=str,
         help='Method to save files to movies. Dramatically affects performance and filesize')
 
     args = parser.parse_args()

@@ -25,6 +25,7 @@ if PySpin is not None:
     import pointgrey_utils as pg
 
 
+
 class Device:
     def __init__(self, start_t=None,height=None,width=None,save=False,savedir=None,
                 experiment=None, name=None,

@@ -4,6 +4,8 @@ import numpy as np
 import subprocess as sp
 from queue import Queue, Empty
 from threading import Thread
+from typing import Union
+import os
 
 def initialize_hdf5(filename, framesize=None, codec=None, fps=None):
     base, ext = os.path.splitext(filename)
