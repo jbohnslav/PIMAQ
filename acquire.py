@@ -127,6 +127,8 @@ def main():
         try:
             p.starmap(initialize_and_loop, tuples)  
         except KeyboardInterrupt:
+            p.close()
+            p.join()
             print('User interrupted acquisition')
 
     if args.preview:
