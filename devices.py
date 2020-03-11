@@ -504,6 +504,7 @@ class PointGrey(Device):
             raise ValueError('Didn''t find serial! %s' %serial)
         cam_list.Clear()
         self.cam.Init()
+        self.compute_timestamp_offset()
 
         self.nodemap = self.cam.GetNodeMap()
         self.serial = serial
@@ -540,6 +541,10 @@ class PointGrey(Device):
             }
         self.options = options
         self.strobe = strobe
+
+    def compute_timestamp_offset(self):
+        self.cam.TimestampLatch.Execute()
+        self.timestamp_offset = time.perf_counter() - self.cam.TimestampLatchValue.GetValue()*1e-9 - self.start_t
 
     def process(self, frame):
         # t0 = time.perf_counter()
@@ -595,7 +600,7 @@ class PointGrey(Device):
                 cputime = time.time()
                 framecount =  image_result.GetFrameID()
                 # timestamp is nanoseconds from last time camera was powered off
-                timestamp = image_result.GetTimeStamp()*1e-9
+                timestamp = image_result.GetTimeStamp()*1e-9 + self.timestamp_offset
                 
                 # print('standard process time: %.6f' %(time.perf_counter() - start_t))
                 # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
