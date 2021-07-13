@@ -1,21 +1,21 @@
+import os
+import subprocess as sp
+import time
+from threading import Thread
+from queue import LifoQueue
+import warnings
+
 try:
     import pyrealsense2 as rs
 except ImportError as e:
     print('pyrealsense not found, cannot acquire realsense cameras...')
     rs = None
-import numpy as np
+
 import cv2
-import time
-# import matplotlib.pyplot as plt
+import numpy as np
 import h5py
-import os
-# import argparse
-# import multiprocessing as mp
-# import yaml
-import warnings
-# import queue
-from utils import VideoWriter
-import subprocess as sp
+from utils import VideoWriter, append_to_hdf5
+
 try:
     import PySpin
 except ImportError as e:
@@ -36,8 +36,9 @@ class Device:
         # self.serial = serial
         self.start_t = start_t
         self.save= save
-        self.savedir = savedir
-        self.experiment = experiment
+        # self.savedir = savedir
+        self.directory = os.path.join(savedir, experiment)
+        # self.experiment = experiment
         self.name = name
         self.uncompressed = uncompressed
         # self.save_format=save_format
@@ -47,22 +48,26 @@ class Device:
         self.height = height
         self.width = width
         self.codec = codec
-        # self.master = master
 
-        assert(movie_format in ['hdf5', 'opencv', 'ffmpeg'])
-        assert(metadata_format in ['hdf5', 'csv'])
-        self.movie_format = movie_format
-        self.metadata_format = metadata_format
-        
         if movie_format == 'hdf5':
-            self.initialization_func = initialize_hdf5
-            self.write_frame = write_frame_hdf5
-        elif movie_format == 'opencv':
-            self.initialization_func = initialize_opencv
-            self.write_frame = write_frame_opencv
+            ending = '.h5'
         elif movie_format == 'ffmpeg':
-            self.initialization_func = initialize_ffmpeg
-            self.write_frame = write_frame_ffmpeg        
+            ending = '.mp4'
+        elif movie_format == 'opencv':
+            ending = '.avi'
+        else:
+            raise ValueError('unknown movie format: {}'.format(movie_format))
+        if self.save:
+            if uncompressed:
+                filetype = '.png'
+                movie_format = 'directory'
+            else:
+                filetype = '.png'
+
+            self.writer_obj = VideoWriter(filename=os.path.join(self.directory, name + ending), 
+                height=self.height, width=self.width, fps=30, verbose=self.verbose, 
+                movie_format=movie_format, filetype=filetype, 
+                )    
 
     def process(self):
         # should be overridden by all subclasses
@@ -121,62 +126,6 @@ class Device:
         # should be overridden by all subclasses
         raise NotImplementedError
 
-    def save_worker(self, queue):
-        should_continue = True
-        while True:
-            try:
-                item = queue.get()
-                # print(item)
-                if item is None:
-                    if self.verbose:
-                        print('Saver stop signal received')
-                    should_continue = False
-                    break
-                # left, right, count = item
-                frame, metadata = item
-
-                self.write_frame(self.writer_obj, frame)
-                self.write_metadata(*metadata)
-
-                # print the size of items in the queue here!
-                # if you're getting large numbers of frames dropped, this is a 
-                # good place to look
-                # queue size
-                # print(queue.qsize())
-            except Exception as e:
-                print(e)
-            finally:
-                queue.task_done()
-        if self.verbose:
-            print('out of save queue')
-        
-    def initialize_saving(self):
-        assert(self.savedir is not None and self.experiment is not None)
-        directory = os.path.join(self.savedir, self.experiment)
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
-        self.directory = directory
-        
-        if self.metadata_format == 'hdf5':
-            self.initialize_metadata_saving_hdf5()
-        else:
-            raise NotImplementedError
-        
-        framesize = (self.width, self.height)
-        if self.uncompressed:
-            codec = 0
-        else:
-            codec = 'MJPG'
-            # codec = 'AV1 '
-        filename = os.path.join(self.directory, self.name)
-        writer_obj = self.initialization_func(filename, framesize, codec)
-        self.writer_obj = writer_obj
-        
-        self.save_queue = Queue(maxsize=3000)
-        self.save_thread = Thread(target=self.save_worker, args=(self.save_queue,))
-        self.save_thread.daemon = True
-        self.save_thread.start()
-
     def update_settings(self):
         # should be overridden by subclass
         raise NotImplementedError
@@ -195,29 +144,13 @@ class Device:
         if not self.started:
             return
         self.stop_streaming()
-        if self.save:
-            print('Waiting for saving thread to finish on cam %s. DO NOT INTERRUPT' %self.name)
-            self.save_queue.put(None)
-            if self.verbose:
-                print('joining...')
-            self.save_queue.join()
-            print('joined')
         if self.preview:
             self.preview_queue.put(None)
             self.preview_thread.join()
             cv2.destroyWindow(self.name)
         if hasattr(self, 'writer_obj'):
-            # print('videoobj')
-            if self.movie_format == 'opencv':
-                self.writer_obj.release()
-            elif self.movie_format == 'hdf5':
-                self.writer_obj.close()
-            elif self.movie_format == 'ffmpeg':
-                self.writer_obj.stdin.close()
-                if self.writer_obj.stderr is not None:
-                    self.writer_obj.stderr.close()
-                self.writer_obj.wait()
-                del(self.writer_obj)
+            self.writer_obj.stop()
+            del self.writer_obj
 
             # del(self.videoobj)
         if hasattr(self, 'metadata_obj'):
@@ -298,7 +231,8 @@ class Realsense(Device):
         time.sleep(1)
         self.update_settings()
         if self.save:
-            self.initialize_saving()
+            self.initialize_metadata_saving_hdf5()
+            # self.initialize_saving()
             if self.verbose:
                 print('saving initialized: %s' %self.name)
         if self.preview:
@@ -380,7 +314,9 @@ class Realsense(Device):
                 # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
                 metadata = (framecount, timestamp, arrival_time, sestime, cputime)
                 if self.save:
-                    self.save_queue.put_nowait((frame, metadata))
+                    self.writer_obj.write(frame)
+                    self.write_metadata(framecount, timestamp, arrival_time, sestime, cputime)
+                    # self.save_queue.put_nowait((frame, metadata))
 
                 # only output every 10th frame for speed
                 # might be unnecessary
@@ -510,6 +446,8 @@ class PointGrey(Device):
         self.serial = serial
         # self.cam = cam
         self.system = system
+        if self.save:
+            self.initialize_metadata_saving_hdf5()
         
 
         if options is None:
@@ -557,7 +495,7 @@ class PointGrey(Device):
         self.update_settings()
         self.cam.BeginAcquisition()
         if self.save:
-            self.initialize_saving()
+            # self.initialize_saving()
             print('saving initialized: %s' %self.name)
         if self.preview:
             self.initialize_preview()
@@ -604,9 +542,11 @@ class PointGrey(Device):
                 
                 # print('standard process time: %.6f' %(time.perf_counter() - start_t))
                 # def write_metadata(self, framecount, timestamp, arrival_time, sestime, cputime):
-                metadata = (framecount, timestamp, sestime, cputime)
+                # metadata = (framecount, timestamp, sestime, cputime)
                 if self.save:
-                    self.save_queue.put_nowait((frame, metadata))
+                    self.writer_obj.write(frame)
+                    self.write_metadata(framecount, timestamp, sestime, cputime)
+                    # self.save_queue.put_nowait((frame, metadata))
 
                 # only output every 10th frame for speed
                 # might be unnecessary

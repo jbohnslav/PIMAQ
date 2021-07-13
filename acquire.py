@@ -61,6 +61,8 @@ def initialize_and_loop(config, camname, cam, args, experiment, start_t):
         raise ValueError('Invalid camera type: %s' %cam['type'])
     # sync_mode = 'master' if serial == args.master else 'slave'
     if cam['master']:
+        sleep_time = np.random.randn()+3
+        time.sleep(sleep_time)
         device.start()
     else:
         sleep_time = np.random.randn()+3
@@ -123,13 +125,17 @@ def main():
     if args.verbose:
         print('Tuples created, starting...')
 
-    with mp.Pool(len(config['cams'])) as p:
-        try:
-            p.starmap(initialize_and_loop, tuples)  
-        except KeyboardInterrupt:
-            p.close()
-            p.join()
-            print('User interrupted acquisition')
+    if len(config['cams']) >1 :
+        with mp.Pool(len(config['cams'])) as p:
+            try:
+                p.starmap(initialize_and_loop, tuples)  
+            except KeyboardInterrupt:
+                p.close()
+                p.join()
+                print('User interrupted acquisition')
+    else:
+        assert len(tuples) == 1
+        initialize_and_loop(*tuples[0])
 
     if args.preview:
         cv2.destroyAllWindows()
